@@ -39,7 +39,7 @@ Open jupyter notebook and run it to see results.
 or
 
 ```
-git clone "adress"
+git clone "address"
 cd copg
 cd RockPaperScissors
 python3 copg_rps.py
