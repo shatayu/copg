@@ -45,7 +45,7 @@ cd RockPaperScissors
 python3 copg_rps.py
 cd ..
 cd tensorboard
-tensordboard --logdir .
+tensorboard --logdir .
 ```
 You can check results in the tensorboard.
 
