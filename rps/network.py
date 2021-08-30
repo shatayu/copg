@@ -30,6 +30,19 @@ class policy2(nn.Module):
         mu = self.sm(self.actor)
         return mu
 
+class pokemon_policy(nn.Module):
+    def __init__(self):
+        super(pokemon_policy, self).__init__()
+          # 2(self and other's position) * 2(action)
+        # self.actor = nn.Sequential(nn.Linear(1, 3, bias=False),  # 2(self and other's position) * 2(action)
+        #                            nn.Softmax(dim =-1))  # 20*2
+        self.sm = nn.Softmax(dim=-1)
+        self.actor = nn.Parameter(torch.FloatTensor([1, 1, 1]))
+
+    def forward(self):
+        mu = self.sm(self.actor)
+        return mu
+
 def init_weights(m):
     if isinstance(m, nn.Linear):
         nn.init.normal_(m.weight, mean=0., std=0.1)
