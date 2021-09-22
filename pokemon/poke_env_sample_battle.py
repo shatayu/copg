@@ -11,6 +11,19 @@ from poke_env.player.env_player import (
 )
 from poke_env.player.utils import cross_evaluate
 
+from poke_env.teambuilder.constant_teambuilder import ConstantTeambuilder
+
+team = """
+Goodra (M) @ Assault Vest
+Ability: Sap Sipper
+EVs: 248 HP / 252 SpA / 8 Spe
+Modest Nature
+IVs: 0 Atk
+- Dragon Pulse
+- Flamethrower
+- Sludge Wave
+- Thunderbolt
+"""
 
 class RandomGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
@@ -63,15 +76,10 @@ def env_algorithm_wrapper(player, kwargs):
         except OSError:
             break
 
+teambuilder = ConstantTeambuilder(team)
 
-p1 = RandomGen8EnvPlayer(log_level=25)
-p2 = RandomGen8EnvPlayer(log_level=25)
-
-p1._start_new_battle = True
-p2._start_new_battle = True
-
-p1 = RandomGen8EnvPlayer(log_level=25)
-p2 = RandomGen8EnvPlayer(log_level=25)
+p1 = RandomGen8EnvPlayer(battle_format="gen8ou", log_level=25, team=teambuilder)
+p2 = RandomGen8EnvPlayer(battle_format="gen8ou", log_level=25, team=teambuilder)
 
 p1._start_new_battle = True
 p2._start_new_battle = True
