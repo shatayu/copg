@@ -13,8 +13,10 @@ from rps.network import pokemon_policy
 
 import time
 
+# run multiple experiments
+# try different optimizer
 folder_location = 'tensorboard/rps/'
-experiment_name = 'copg/'
+experiment_name = 'copg2/'
 directory = '../' + folder_location + experiment_name + 'model'
 
 if not os.path.exists(directory):
@@ -24,10 +26,21 @@ writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 p1 = pokemon_policy()
 p2 = pokemon_policy()
 
-optim = CoPG(p1.parameters(),p2.parameters(), lr =0.5)
+optim = CoPG(p1.parameters(),p2.parameters(), lr =0.5) # use Adam optimizer
 
 batch_size = 1000
-num_episode = 1000
+num_episode = 1000 # increase this and batch size
+
+# visualization that captures dynamics
+# - visualize gradient?
+# - simple visualization of battle
+#   - see who went first and the move they chose?
+
+# make policy more complex
+# - make policy state dependent or
+# - make optimal policy probabilistic
+
+# try with GDA as well
 
 env = rps_game()
 
