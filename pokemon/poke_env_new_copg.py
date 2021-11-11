@@ -72,6 +72,8 @@ def env_algorithm(env, name, shared_info, n_battles):
     for episode in range(n_battles):
         if episode % 10 == 0:
             print(f'Episode {episode}')
+
+        # gather states from batch_size batches
         done = False
         observation = env.reset()
 
