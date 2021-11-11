@@ -94,6 +94,7 @@ def env_algorithm_player_1(env, shared_info, n_episodes):
         writer.add_scalar('Action/agent2', torch.mean(action_both[:,1]), episode)
 
         val1_p = torch.stack(shared_info['mat_reward1']).transpose(0,1)
+        print(val1_p)
         if val1_p.size(0)!=1:
             raise 'error'
 
@@ -105,8 +106,6 @@ def env_algorithm_player_1(env, shared_info, n_episodes):
         pi_a2_s = p2()
         dist_pi2 = Categorical(pi_a2_s)
         log_probs2 = dist_pi2.log_prob(action_both[:,1])
-
-        print(f'a1: {pi_a1_s}, a2: {pi_a2_s}')
 
         objective = log_probs1*log_probs2*(val1_p)
         if objective.size(0) != 1:
@@ -126,10 +125,8 @@ def env_algorithm_player_1(env, shared_info, n_episodes):
             s_log_probs2[i] = torch.add(s_log_probs2[i - 1], log_probs2[i])
 
         objective2 = s_log_probs1*log_probs2*(val1_p)
-        ob2 = objective2.mean()
 
         objective3 = log_probs1*s_log_probs2*(val1_p)
-        ob3 = objective3.mean()
 
         lp1 = log_probs1*val1_p
         lp1=lp1.mean()
