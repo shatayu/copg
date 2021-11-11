@@ -192,6 +192,12 @@ def env_algorithm(env, name, shared_info, n_battles):
             writer.add_scalar('Entropy/agent1', dist_batch1.entropy().mean().detach(), t_eps)
             writer.add_scalar('Entropy/agent2', dist_batch2.entropy().mean().detach(), t_eps)
 
+            for name in agent_names:
+                shared_info[name]['mat_state'] = []
+                shared_info[name]['mat_action'] = []
+                shared_info[name]['mat_reward'] = []
+                shared_info[name]['mat_done'] = []
+
             if t_eps%100==0:
                 torch.save(p1.state_dict(),
                         '../' + folder_location + experiment_name + 'model/agent1_' + str(
