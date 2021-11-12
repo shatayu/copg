@@ -11,7 +11,7 @@ class policy1(nn.Module):
         # self.actor = nn.Sequential(nn.Linear(1, 3, bias=False),  # 2(self and other's position) * 2(action)
         #                            nn.Softmax(dim =-1))  # 20*2
         self.sm = nn.Softmax(dim=-1)
-        self.actor = nn.Parameter(torch.FloatTensor([-0.35,0.4,1]))#0.35,0.4,0.3
+        self.actor = nn.Parameter(torch.FloatTensor([0.4, 1, 0]))#0.35,0.4,0.3
 
     def forward(self):
         mu = self.sm(self.actor)
@@ -24,7 +24,7 @@ class policy2(nn.Module):
         # self.actor = nn.Sequential(nn.Linear(1, 3, bias=False),  # 2(self and other's position) * 2(action)
         #                            nn.Softmax(dim =-1))  # 20*2
         self.sm = nn.Softmax(dim=-1)
-        self.actor = nn.Parameter(torch.FloatTensor([1,-0.3,0.4]))#0.35,0.3,0.4
+        self.actor = nn.Parameter(torch.FloatTensor([0.4, 1, 0]))#0.35,0.3,0.4
 
     def forward(self):
         mu = self.sm(self.actor)
