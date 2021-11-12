@@ -52,7 +52,7 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
 batch_size = 10
-num_episode = 100
+num_episode = 1000
 
 folder_location = 'tensorboard/pokemon/'
 experiment_name = 'copg_v2_test/'
@@ -64,80 +64,110 @@ writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 
 agent_names = ['Agent 1', 'Agent 2']
 
-def get_new_shared_info():
-    shared_info = {}
-
-    for name in agent_names:
-        shared_info[name] = {}
-        shared_info[name]['mat_state'] = []
-        shared_info[name]['mat_action'] = []
-        shared_info[name]['mat_reward'] = []
-        shared_info[name]['mat_done'] = []
-        shared_info[name]['num_completed_batches'] = 0
-    
-    return shared_info
+AGENT_1_ID = 0
+AGENT_2_ID = 1
 
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
-        return np.array([0])
+        opponent_healths = [mon._current_hp for mon in battle.opponent_team.values()]
+        return np.array(opponent_healths)
 
-# modify the algorithm for custom batch sizes
-# put code to generate empty mat_state arrays in a function
-# analyze results
+class SharedInfo():
+    def __init__(self):
+        self.num_agents = 2
+        self.num_completed_batches = [0] * self.num_agents
 
-def env_algorithm(env, name, shared_info, n_battles):
+        self.reset()
+
+    def batch_counts_equal(self):
+        return self.num_completed_batches[0] == self.num_completed_batches[1]
+    
+    def get_num_wins(self):
+        num_wins_agent_1 = len([t for t in self.mat_reward[0] if t == 1.0])
+        num_wins_agent_2 = len([t for t in self.mat_reward[0] if t == 1.0])
+
+        return (num_wins_agent_1, num_wins_agent_2)
+    
+    def reset(self):
+        # one per episode
+        self.mat_done = []
+        self.episode_log = []
+
+        # one per agent
+        self.mat_action = [[] for _ in range(self.num_agents)]
+        self.mat_state = [[] for _ in range(self.num_agents)]
+        self.mat_reward = [[] for _ in range(self.num_agents)]
+
+# things to log
+# which move sequences were used
+# what percentage of the time did the agent use the optimal move sequence (as measured by winning in as few moves as possible)
+# who went first each turn with those move sequences
+# who won the battle
+
+def env_algorithm(env, id, shared_info, n_battles):
     for episode in range(n_battles):
         print(f'Episode {episode}')
 
         # gather states from batch_size batches
-        shared_info = get_new_shared_info()
-
         for _ in range(batch_size):
             done = False
             observation = env.reset()
 
-            t_eps = 0
-
             while not done:
+                shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
                 action = dist.sample()
+                shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
                 observation, reward, done, _ = env.step(action)
-                shared_info[name]['mat_state'].append(torch.FloatTensor(observation))
-                shared_info[name]['mat_action'].append(action)
-                shared_info[name]['mat_reward'].append(torch.FloatTensor(np.array([reward])))
-                shared_info[name]['mat_done'].append(torch.FloatTensor([1 - int(done)]))
+                shared_info.mat_state[id].append(torch.FloatTensor(observation))
+                shared_info.mat_action[id].append(action)
+                shared_info.mat_reward[id].append(torch.FloatTensor(np.array([reward])))
 
-                t_eps += 1
-                shared_info[name]['num_completed_batches'] += 1
+                shared_info.episode_log.append(f'Resulting state (E{episode}A{id}): {observation}')
 
-        if shared_info[agent_names[0]]['num_completed_batches'] == shared_info[agent_names[1]]['num_completed_batches']:
-            st_q_time = time.time()
-            reward1 = shared_info[agent_names[0]]['mat_reward'][-1]
-            reward2 = shared_info[agent_names[1]]['mat_reward'][-1]
+                if id == AGENT_1_ID:
+                    shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
 
-            if reward1 > 0:
-                writer.add_scalar('Steps/agent1', 100, t_eps)
-                writer.add_scalar('Steps/agent2', 50, t_eps)
-            elif reward2 > 0:
-                writer.add_scalar('Steps/agent1', 50, t_eps)
-                writer.add_scalar('Steps/agent2', 100, t_eps)
+            shared_info.num_completed_batches[id] += 1
+
+        if shared_info.batch_counts_equal():
+            reward1, reward2 = shared_info.get_num_wins()
+
+            if reward1 > reward2:
+                writer.add_scalar('Steps/agent1', 100, episode)
+                writer.add_scalar('Steps/agent2', 50, episode)
+            elif reward2 > reward1:
+                writer.add_scalar('Steps/agent1', 50, episode)
+                writer.add_scalar('Steps/agent2', 100, episode)
             else:
-                writer.add_scalar('Steps/agent1', 50, t_eps)
-                writer.add_scalar('Steps/agent2', 50, t_eps)
+                writer.add_scalar('Steps/agent1', 50, episode)
+                writer.add_scalar('Steps/agent2', 50, episode)
             
-            # figure reward out
-            # define mat_state1, mat_state2, mat_reward1, mat_reward2, mat_done
-            # import q, get_advantage
-            mat_state1 = shared_info[agent_names[0]]['mat_state']
-            mat_state2 = shared_info[agent_names[1]]['mat_state']
-            mat_done = shared_info[agent_names[0]]['mat_done']
-            mat_reward1 = shared_info[agent_names[0]]['mat_reward']
-            mat_reward2 = shared_info[agent_names[1]]['mat_reward']
+            mat_state1 = shared_info.mat_state[AGENT_1_ID]
+            mat_state2 = shared_info.mat_state[AGENT_2_ID]
 
-            assert len(shared_info[agent_names[0]]['mat_action']) == len(shared_info[agent_names[1]]['mat_action'])
-            mat_action = list(zip(shared_info[agent_names[0]]['mat_action'], shared_info[agent_names[1]]['mat_action']))
+            mat_reward1 = shared_info.mat_reward[AGENT_1_ID]
+            mat_reward2 = shared_info.mat_reward[AGENT_2_ID]
+
+            if len(mat_state1) == 0 or len(mat_state2) == 0:
+                empty_array = 1 if len(mat_state1) == 0 else 2
+                print(f'Dumping episode log because mat_state{empty_array} is empty')
+                print(shared_info.episode_log)
+
+            mat_done = shared_info.mat_done
+            
+            # generate mat_action array
+            mat_action1 = shared_info.mat_action[AGENT_1_ID]
+            mat_action2 = shared_info.mat_action[AGENT_2_ID]
+            if len(mat_action1) != len(mat_action2):
+                print(f'Error: action lengths are not equal: {len(mat_action1)}, {len(mat_action2)}')
+                print(mat_action1)
+                print(mat_action2)
+                print(shared_info.episode_log)
+            assert len(mat_action1) == len(mat_action2)
+            mat_action = list(zip(mat_action1, mat_action2))
             mat_action = list(map(lambda x: torch.FloatTensor(np.array(list(x))), mat_action))
 
             # compare mat_action, mat_state1/mat_state2, mat_reward1/mat_reward2 to what is expected in soccer
@@ -161,7 +191,7 @@ def env_algorithm(env, name, shared_info, n_battles):
             advantage_mat2 = returns2 - val2.transpose(0,1)
 
             for loss_critic, gradient_norm in critic_update(torch.cat([torch.stack(mat_state1),torch.stack(mat_state2)]), torch.cat([returns1,returns2]).view(-1,1), q, optim_q):
-                writer.add_scalar('Loss/critic', loss_critic, t_eps)
+                writer.add_scalar('Loss/critic', loss_critic, episode)
             ed_q_time = time.time()
 
             val1_p = advantage_mat1
@@ -183,7 +213,6 @@ def env_algorithm(env, name, shared_info, n_battles):
 
             s_log_probs1 = log_probs1[0:log_probs1.size(0)].clone() # otherwise it doesn't change values
             s_log_probs2 = log_probs2[0:log_probs2.size(0)].clone()
-
 
             mask = torch.stack(mat_done)
 
@@ -209,25 +238,21 @@ def env_algorithm(env, name, shared_info, n_battles):
             optim.step(ob + ob2 + ob3, lp1,lp2)
             ed_time = time.time()
 
-            writer.add_scalar('Entropy/agent1', dist_batch1.entropy().mean().detach(), t_eps)
-            writer.add_scalar('Entropy/agent2', dist_batch2.entropy().mean().detach(), t_eps)
+            writer.add_scalar('Entropy/agent1', dist_batch1.entropy().mean().detach(), episode)
+            writer.add_scalar('Entropy/agent2', dist_batch2.entropy().mean().detach(), episode)
+            
+            shared_info.reset()
 
-            for name in agent_names:
-                shared_info[name]['mat_state'] = []
-                shared_info[name]['mat_action'] = []
-                shared_info[name]['mat_reward'] = []
-                shared_info[name]['mat_done'] = []
-
-            if t_eps%100==0:
+            if episode%100==0:
                 torch.save(p1.state_dict(),
                         '../' + folder_location + experiment_name + 'model/agent1_' + str(
-                            t_eps) + ".pth")
+                            episode) + ".pth")
                 torch.save(q.state_dict(),
                         '../' + folder_location + experiment_name + 'model/val_' + str(
-                            t_eps) + ".pth")
+                            episode) + ".pth")
 
-def env_algorithm_wrapper(player, name, shared_info, kwargs):
-    env_algorithm(player, name, shared_info, **kwargs)
+def env_algorithm_wrapper(player, id, shared_info, kwargs):
+    env_algorithm(player, id, shared_info, **kwargs)
 
     player._start_new_battle = False
     while True:
@@ -259,12 +284,12 @@ loop = asyncio.get_event_loop()
 
 env_algorithm_kwargs = {"n_battles": num_episode}
 
-shared_info = get_new_shared_info()
+shared_info = SharedInfo()
 
-t1 = Thread(target=lambda: env_algorithm_wrapper(player1, agent_names[0], shared_info, env_algorithm_kwargs))
+t1 = Thread(target=lambda: env_algorithm_wrapper(player1, AGENT_1_ID, shared_info, env_algorithm_kwargs))
 t1.start()
 
-t2 = Thread(target=lambda: env_algorithm_wrapper(player2, agent_names[1], shared_info, env_algorithm_kwargs))
+t2 = Thread(target=lambda: env_algorithm_wrapper(player2, AGENT_2_ID, shared_info, env_algorithm_kwargs))
 t2.start()
 
 while player1._start_new_battle:
