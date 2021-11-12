@@ -64,37 +64,55 @@ writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 
 agent_names = ['Agent 1', 'Agent 2']
 
+def get_new_shared_info():
+    shared_info = {}
+
+    for name in agent_names:
+        shared_info[name] = {}
+        shared_info[name]['mat_state'] = []
+        shared_info[name]['mat_action'] = []
+        shared_info[name]['mat_reward'] = []
+        shared_info[name]['mat_done'] = []
+        shared_info[name]['num_completed_batches'] = 0
+    
+    return shared_info
+
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
         return np.array([0])
 
+# modify the algorithm for custom batch sizes
+# put code to generate empty mat_state arrays in a function
+# analyze results
+
 def env_algorithm(env, name, shared_info, n_battles):
     for episode in range(n_battles):
-        if episode % 10 == 0:
-            print(f'Episode {episode}')
+        print(f'Episode {episode}')
 
         # gather states from batch_size batches
-        done = False
-        observation = env.reset()
+        shared_info = get_new_shared_info()
 
-        t_eps = 0
+        for _ in range(batch_size):
+            done = False
+            observation = env.reset()
 
-        while not done:
-            action_prob = p1(torch.FloatTensor(observation))
-            dist = Categorical(action_prob)
-            action = dist.sample()
+            t_eps = 0
 
-            observation, reward, done, _ = env.step(action)
-            shared_info[name]['mat_state'].append(torch.FloatTensor(observation))
-            shared_info[name]['mat_action'].append(action)
-            shared_info[name]['mat_reward'].append(torch.FloatTensor(np.array([reward])))
-            shared_info[name]['mat_done'].append(torch.FloatTensor([1 - int(done)]))
+            while not done:
+                action_prob = p1(torch.FloatTensor(observation))
+                dist = Categorical(action_prob)
+                action = dist.sample()
 
-            t_eps += 1
-            
-        shared_info[name]['num_completed_episodes'] += 1
+                observation, reward, done, _ = env.step(action)
+                shared_info[name]['mat_state'].append(torch.FloatTensor(observation))
+                shared_info[name]['mat_action'].append(action)
+                shared_info[name]['mat_reward'].append(torch.FloatTensor(np.array([reward])))
+                shared_info[name]['mat_done'].append(torch.FloatTensor([1 - int(done)]))
 
-        if shared_info[agent_names[0]]['num_completed_episodes'] == shared_info[agent_names[1]]['num_completed_episodes']:
+                t_eps += 1
+                shared_info[name]['num_completed_batches'] += 1
+
+        if shared_info[agent_names[0]]['num_completed_batches'] == shared_info[agent_names[1]]['num_completed_batches']:
             st_q_time = time.time()
             reward1 = shared_info[agent_names[0]]['mat_reward'][-1]
             reward2 = shared_info[agent_names[1]]['mat_reward'][-1]
@@ -241,15 +259,7 @@ loop = asyncio.get_event_loop()
 
 env_algorithm_kwargs = {"n_battles": num_episode}
 
-shared_info = {}
-
-for name in agent_names:
-    shared_info[name] = {}
-    shared_info[name]['mat_state'] = []
-    shared_info[name]['mat_action'] = []
-    shared_info[name]['mat_reward'] = []
-    shared_info[name]['mat_done'] = []
-    shared_info[name]['num_completed_episodes'] = 0
+shared_info = get_new_shared_info()
 
 t1 = Thread(target=lambda: env_algorithm_wrapper(player1, agent_names[0], shared_info, env_algorithm_kwargs))
 t1.start()
