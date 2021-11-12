@@ -29,6 +29,7 @@ from markov_soccer.networks import critic
 
 from copg_optim.critic_functions import critic_update, get_advantage
 from markov_soccer.soccer_state import get_relative_state, get_two_state
+from collections import Counter
 import time
 
 
@@ -52,7 +53,7 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
 batch_size = 10
-num_episode = 1000
+num_episode = 500
 
 folder_location = 'tensorboard/pokemon/'
 experiment_name = 'copg_v2_test/'
@@ -61,8 +62,6 @@ directory = '../' + folder_location + experiment_name + 'model'
 if not os.path.exists(directory):
     os.makedirs(directory)
 writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
-
-agent_names = ['Agent 1', 'Agent 2']
 
 AGENT_1_ID = 0
 AGENT_2_ID = 1
@@ -83,10 +82,16 @@ class SharedInfo():
         return self.num_completed_batches[0] == self.num_completed_batches[1]
     
     def get_num_wins(self):
-        num_wins_agent_1 = len([t for t in self.mat_reward[0] if t == 1.0])
-        num_wins_agent_2 = len([t for t in self.mat_reward[0] if t == 1.0])
+        num_wins_agent_1 = len([t for t in self.mat_reward[AGENT_1_ID] if t > 0])
+        num_wins_agent_2 = len([t for t in self.mat_reward[AGENT_2_ID] if t > 0])
 
         return (num_wins_agent_1, num_wins_agent_2)
+    
+    def get_action_counts(self):
+        action1 = [float(x) for x in self.mat_action[AGENT_1_ID]]
+        action2 = [float(x) for x in self.mat_action[AGENT_2_ID]]
+
+        return list(Counter(action1).items()), list(Counter(action2).items())
     
     def reset(self):
         # one per episode
@@ -132,18 +137,14 @@ def env_algorithm(env, id, shared_info, n_battles):
 
             shared_info.num_completed_batches[id] += 1
 
+        # battles are multithreaded so one agent may finish a battle slightly earlier than the second;
+        # the code below will run only when the second agent is fully caught up with the first
         if shared_info.batch_counts_equal():
             reward1, reward2 = shared_info.get_num_wins()
 
-            if reward1 > reward2:
-                writer.add_scalar('Steps/agent1', 100, episode)
-                writer.add_scalar('Steps/agent2', 50, episode)
-            elif reward2 > reward1:
-                writer.add_scalar('Steps/agent1', 50, episode)
-                writer.add_scalar('Steps/agent2', 100, episode)
-            else:
-                writer.add_scalar('Steps/agent1', 50, episode)
-                writer.add_scalar('Steps/agent2', 50, episode)
+            writer.add_scalar('Steps/agent_1_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
+            writer.add_scalar('Steps/agent_2_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
+            writer.add_scalar('Steps/average_battle_length_in_batch', len(shared_info.mat_done) / batch_size, episode)
             
             mat_state1 = shared_info.mat_state[AGENT_1_ID]
             mat_state2 = shared_info.mat_state[AGENT_2_ID]
@@ -161,14 +162,22 @@ def env_algorithm(env, id, shared_info, n_battles):
             # generate mat_action array
             mat_action1 = shared_info.mat_action[AGENT_1_ID]
             mat_action2 = shared_info.mat_action[AGENT_2_ID]
-            if len(mat_action1) != len(mat_action2):
-                print(f'Error: action lengths are not equal: {len(mat_action1)}, {len(mat_action2)}')
-                print(mat_action1)
-                print(mat_action2)
-                print(shared_info.episode_log)
+
             assert len(mat_action1) == len(mat_action2)
             mat_action = list(zip(mat_action1, mat_action2))
             mat_action = list(map(lambda x: torch.FloatTensor(np.array(list(x))), mat_action))
+
+            # log action counts
+            agent_1_action_counts, agent_2_action_counts = shared_info.get_action_counts()
+
+            agent_1_action_0_count = [x[1] for x in agent_1_action_counts if x[0] == 0.0][0]
+            agent_2_action_0_count = [x[1] for x in agent_2_action_counts if x[0] == 0.0][0]
+
+            agent_1_action_0_rate = 100 * float(agent_1_action_0_count) / len(mat_action1)
+            agent_2_action_0_rate = 100 * float(agent_2_action_0_count) / len(mat_action2)
+
+            writer.add_scalar('Steps/agent_1_action_0_proportion', agent_1_action_0_rate, episode)
+            writer.add_scalar('Steps/agent_2_action_0_proportion', agent_2_action_0_rate, episode)
 
             # compare mat_action, mat_state1/mat_state2, mat_reward1/mat_reward2 to what is expected in soccer
             # might need to implement batch sizes and reset shared_info each batch
@@ -251,6 +260,7 @@ def env_algorithm(env, id, shared_info, n_battles):
                         '../' + folder_location + experiment_name + 'model/val_' + str(
                             episode) + ".pth")
 
+# boilerplate code to run battles
 def env_algorithm_wrapper(player, id, shared_info, kwargs):
     env_algorithm(player, id, shared_info, **kwargs)
 
