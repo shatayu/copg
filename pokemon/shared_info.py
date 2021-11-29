@@ -76,9 +76,6 @@ class SharedInfo():
 
         # prepend new 1 - int(False) = 1 entries for each new term in here
         dummy_terms = [1] * (len(balanced_reward_1) - len(self.mat_done))
-
-        print(self.mat_done)
-
         return dummy_terms + self.remove_turns(self.mat_done)
     
     def get_turn(self, action):
