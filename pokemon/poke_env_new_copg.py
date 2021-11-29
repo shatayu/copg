@@ -156,9 +156,6 @@ def env_algorithm(env, id, shared_info, n_battles):
             val1 = val1.detach()
             next_value = 0  # because currently we end ony when its done which is equivalent to no next state
 
-            print('len of mat_reward1 and mat_done')
-            print((mat_reward1))
-            print((mat_done))
             returns_np1 = get_advantage(next_value, torch.stack(mat_reward1), val1, torch.stack(mat_done), gamma=0.99, tau=0.95)
 
             returns1 = torch.cat(returns_np1)
