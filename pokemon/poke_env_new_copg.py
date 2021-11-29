@@ -42,6 +42,14 @@ Adamant Nature
 - Dragon Claw
 - Fire Fang
 - Shadow Claw
+
+Lucario (M) @ Sitrus Berry
+Ability: Inner Focus
+EVs: 248 HP / 252 SpA / 8 Spe
+Adamant Nature
+- Close Combat
+- Earthquake
+- Crunch
 """
 
 AGENT_1_ID = 0
@@ -67,8 +75,6 @@ if not os.path.exists(directory):
     os.makedirs(directory)
 writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 
-
-
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
         # opponent_healths = [mon._current_hp for mon in battle.opponent_team.values()]
@@ -89,8 +95,9 @@ def env_algorithm(env, id, shared_info, n_battles):
             done = False
             observation = env.reset()
 
+            turn = observation[0]
+
             while not done:
-                print(f'Agent {id + 1}: turn {observation}')
                 shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
@@ -98,14 +105,23 @@ def env_algorithm(env, id, shared_info, n_battles):
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
                 observation, reward, done, _ = env.step(action)
-                shared_info.mat_state[id].append(torch.FloatTensor(observation))
-                shared_info.mat_action[id].append(action)
-                shared_info.mat_reward[id].append(torch.FloatTensor(np.array([reward])))
 
-                shared_info.episode_log.append(f'Resulting state (E{episode}A{id}): {observation}')
+                # original way of adding info; don't forget 
+                # shared_info.mat_state[id].append(torch.FloatTensor(observation))
+                # shared_info.mat_action[id].append(action)
+                # shared_info.mat_reward[id].append(torch.FloatTensor(np.array([reward])))
+
+                # if id == AGENT_1_ID:
+                #     shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
+
+                # new way with turns for balanced action counts
+                shared_info.mat_state[id].append((torch.FloatTensor([observation]), turn))
+                shared_info.mat_action[id].append((action, turn))
+                shared_info.mat_reward[id].append((torch.FloatTensor(np.array([reward])), turn))
 
                 if id == AGENT_1_ID:
-                    shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
+                    is_done = torch.FloatTensor([1 - int(done)])
+                    shared_info.mat_done.append((is_done, turn))
 
             shared_info.num_completed_batches[id] += 1
 
@@ -118,22 +134,19 @@ def env_algorithm(env, id, shared_info, n_battles):
             writer.add_scalar('Steps/agent_2_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
             writer.add_scalar('Steps/average_battle_length_in_batch', len(shared_info.mat_done) / batch_size, episode)
             
-            mat_state1 = shared_info.mat_state[AGENT_1_ID]
-            mat_state2 = shared_info.mat_state[AGENT_2_ID]
+            mat_state1, mat_state2 = shared_info.get_turn_balanced_states()
 
-            mat_reward1 = shared_info.mat_reward[AGENT_1_ID]
-            mat_reward2 = shared_info.mat_reward[AGENT_2_ID]
+            mat_reward1, mat_reward2 = shared_info.get_turn_balanced_rewards()
 
             if len(mat_state1) == 0 or len(mat_state2) == 0:
                 empty_array = 1 if len(mat_state1) == 0 else 2
                 print(f'Dumping episode log because mat_state{empty_array} is empty')
                 print(shared_info.episode_log)
 
-            mat_done = shared_info.mat_done
+            mat_done = shared_info.get_turn_balanced_done()
             
             # generate mat_action array
-            mat_action1 = shared_info.mat_action[AGENT_1_ID]
-            mat_action2 = shared_info.mat_action[AGENT_2_ID]
+            mat_action1, mat_action2 = shared_info.get_turn_balanced_actions()
 
             assert len(mat_action1) == len(mat_action2)
             mat_action = list(zip(mat_action1, mat_action2))
@@ -143,6 +156,9 @@ def env_algorithm(env, id, shared_info, n_battles):
             val1 = val1.detach()
             next_value = 0  # because currently we end ony when its done which is equivalent to no next state
 
+            print('len of mat_reward1 and mat_done')
+            print((mat_reward1))
+            print((mat_done))
             returns_np1 = get_advantage(next_value, torch.stack(mat_reward1), val1, torch.stack(mat_done), gamma=0.99, tau=0.95)
 
             returns1 = torch.cat(returns_np1)
