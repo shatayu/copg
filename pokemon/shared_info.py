@@ -1,10 +1,11 @@
 from collections import Counter
 import torch
+import numpy as np
 
 AGENT_1_ID = 0
 AGENT_2_ID = 1
 
-NULL_ACTION_ID = 24
+NULL_ACTION_ID = 23
 
 class SharedInfo():
     def __init__(self):
@@ -64,8 +65,8 @@ class SharedInfo():
         balanced_reward_1, balanced_reward_2 = self.balance_arrays(self.mat_reward[AGENT_1_ID], self.mat_reward[AGENT_2_ID])
 
         # replace null rewards with 0
-        balanced_reward_1 = [(0, x[1]) if x[0] == None else x for x in balanced_reward_1]
-        balanced_reward_2 = [(0, x[1]) if x[0] == None else x for x in balanced_reward_2]
+        balanced_reward_1 = [(torch.FloatTensor(np.array([0])), x[1]) if x[0] == None else x for x in balanced_reward_1]
+        balanced_reward_2 = [(torch.FloatTensor(np.array([0])), x[1]) if x[0] == None else x for x in balanced_reward_2]
 
         assert len(balanced_reward_1) == len(balanced_reward_2)
 
@@ -75,7 +76,7 @@ class SharedInfo():
         balanced_reward_1, _ = self.balance_arrays(self.mat_reward[AGENT_1_ID], self.mat_reward[AGENT_2_ID])
 
         # prepend new 1 - int(False) = 1 entries for each new term in here
-        dummy_terms = [1] * (len(balanced_reward_1) - len(self.mat_done))
+        dummy_terms = [torch.FloatTensor(np.array([1]))] * (len(balanced_reward_1) - len(self.mat_done))
         return dummy_terms + self.remove_turns(self.mat_done)
     
     def get_turn(self, action):

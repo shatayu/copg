@@ -50,13 +50,53 @@ Adamant Nature
 - Close Combat
 - Earthquake
 - Crunch
+
+Heatran (F) @ Leftovers
+Ability: Flash Fire
+EVs: 248 HP / 232 SpD / 28 Spe
+Calm Nature
+IVs: 0 Atk
+- Magma Storm
+- Toxic
+- Taunt
+- Earth Power
+
+Slowbro @ Heavy-Duty Boots
+Ability: Regenerator
+EVs: 252 HP / 252 Def / 4 SpD
+Relaxed Nature
+IVs: 0 Atk / 0 Spe
+- Scald
+- Slack Off
+- Teleport
+- Future Sight
+
+Tapu Koko @ Light Clay
+Ability: Electric Surge
+EVs: 252 HP / 4 SpD / 252 Spe
+Timid Nature
+- U-turn
+- Light Screen
+- Reflect
+- Thunderbolt
+
+Hawlucha @ Electric Seed
+Ability: Unburden
+EVs: 252 Atk / 4 SpD / 252 Spe
+Adamant Nature
+- Acrobatics
+- Swords Dance
+- Close Combat
+- Stone Edge
 """
 
 AGENT_1_ID = 0
 AGENT_2_ID = 1
 
+NULL_ACTION_ID = 23
+
 # initialize policies
-p1 = policy(1,3)
+p1 = policy(1,24)
 q = critic(1)
 
 # initialize CoPG
@@ -65,7 +105,7 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
 batch_size = 1
-num_episode = 1
+num_episode = 10
 
 folder_location = 'tensorboard/pokemon/'
 experiment_name = 'copg_v2_test/'
@@ -78,8 +118,11 @@ writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
         # opponent_healths = [mon._current_hp for mon in battle.opponent_team.values()]
-        return np.array([battle.turn])
+        self.battle = battle
 
+        available_moves = list(range(len(battle.available_moves)))
+        available_switches = [16 + x for x in list(range(len(battle.available_switches)))]
+        return (np.array([battle.turn]), available_moves, available_switches)
 # things to log
 # which move sequences were used
 # what percentage of the time did the agent use the optimal move sequence (as measured by winning in as few moves as possible)
@@ -93,7 +136,8 @@ def env_algorithm(env, id, shared_info, n_battles):
         # gather states from batch_size batches
         for _ in range(batch_size):
             done = False
-            observation = env.reset()
+            all_data = env.reset()
+            observation = all_data[0]
 
             turn = observation[0]
 
@@ -102,9 +146,17 @@ def env_algorithm(env, id, shared_info, n_battles):
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
                 action = dist.sample()
+
+                legal_actions = all_data[1] + all_data[2]
+
+                while action.item() not in legal_actions:
+                    action = dist.sample()
+
+                print(action)
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
-                observation, reward, done, _ = env.step(action)
+                all_data, reward, done, _ = env.step(action)
+                observation = all_data[0]
 
                 # original way of adding info; don't forget 
                 # shared_info.mat_state[id].append(torch.FloatTensor(observation))
