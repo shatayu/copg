@@ -33,61 +33,67 @@ from markov_soccer.soccer_state import get_relative_state, get_two_state
 from collections import Counter
 import time
 
+# https://pokepast.es/78d5c6bf90f769de
+# selected because this team peaked at #3 on the showdown ladder
+# https://youtu.be/xwj9d3wjwhg
 
 team = """
-Garchomp (M) @ Sitrus Berry
-Ability: Rough Skin
-EVs: 248 HP / 252 SpA / 8 Spe
-Adamant Nature
-- Dragon Claw
-- Fire Fang
-- Shadow Claw
+Tapu Fini @ Expert Belt  
+Ability: Misty Surge  
+EVs: 4 Def / 252 SpA / 252 Spe  
+Modest Nature  
+- Hydro Pump  
+- Ice Beam  
+- Moonblast  
+- Knock Off  
 
-Lucario (M) @ Sitrus Berry
-Ability: Inner Focus
-EVs: 248 HP / 252 SpA / 8 Spe
-Adamant Nature
-- Close Combat
-- Earthquake
-- Crunch
+Mamoswine @ Leftovers  
+Ability: Thick Fat  
+EVs: 252 Atk / 4 SpD / 252 Spe  
+Adamant Nature  
+- Earthquake  
+- Icicle Crash  
+- Ice Shard  
+- Substitute  
 
-Heatran (F) @ Leftovers
-Ability: Flash Fire
-EVs: 248 HP / 232 SpD / 28 Spe
-Calm Nature
-IVs: 0 Atk
-- Magma Storm
-- Toxic
-- Taunt
-- Earth Power
+Magnezone @ Air Balloon  
+Ability: Magnet Pull  
+Shiny: Yes  
+EVs: 252 Def / 116 SpA / 140 Spe  
+Bold Nature  
+IVs: 0 Atk  
+- Iron Defense  
+- Body Press  
+- Thunderbolt  
+- Flash Cannon  
 
-Slowbro @ Heavy-Duty Boots
-Ability: Regenerator
-EVs: 252 HP / 252 Def / 4 SpD
-Relaxed Nature
-IVs: 0 Atk / 0 Spe
-- Scald
-- Slack Off
-- Teleport
-- Future Sight
+Dragonite @ Heavy-Duty Boots  
+Ability: Multiscale  
+EVs: 248 HP / 52 Atk / 56 Def / 152 Spe  
+Adamant Nature  
+- Dragon Dance  
+- Ice Punch  
+- Earthquake  
+- Roost  
 
-Tapu Koko @ Light Clay
-Ability: Electric Surge
-EVs: 252 HP / 4 SpD / 252 Spe
-Timid Nature
-- U-turn
-- Light Screen
-- Reflect
-- Thunderbolt
+Heatran @ Leftovers  
+Ability: Flash Fire  
+EVs: 252 HP / 128 SpD / 128 Spe  
+Calm Nature  
+IVs: 0 Atk  
+- Stealth Rock  
+- Magma Storm  
+- Earth Power  
+- Taunt  
 
-Hawlucha @ Electric Seed
-Ability: Unburden
-EVs: 252 Atk / 4 SpD / 252 Spe
-Adamant Nature
-- Acrobatics
-- Swords Dance
-- Close Combat
-- Stone Edge
+Kartana @ Choice Scarf  
+Ability: Beast Boost  
+EVs: 252 Atk / 4 SpD / 252 Spe  
+Jolly Nature  
+- Leaf Blade  
+- Sacred Sword  
+- Knock Off  
+- Smart Strike  
 """
 
 AGENT_1_ID = 0
@@ -108,7 +114,7 @@ batch_size = 1
 num_episode = 10
 
 folder_location = 'tensorboard/pokemon/'
-experiment_name = 'copg_v2_test/'
+experiment_name = 'copg_6v6_v1/'
 directory = '../' + folder_location + experiment_name + 'model'
 
 if not os.path.exists(directory):
@@ -152,19 +158,10 @@ def env_algorithm(env, id, shared_info, n_battles):
                 while action.item() not in legal_actions:
                     action = dist.sample()
 
-                print(action)
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
                 all_data, reward, done, _ = env.step(action)
                 observation = all_data[0]
-
-                # original way of adding info; don't forget 
-                # shared_info.mat_state[id].append(torch.FloatTensor(observation))
-                # shared_info.mat_action[id].append(action)
-                # shared_info.mat_reward[id].append(torch.FloatTensor(np.array([reward])))
-
-                # if id == AGENT_1_ID:
-                #     shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
 
                 # new way with turns for balanced action counts
                 shared_info.mat_state[id].append((torch.FloatTensor([observation]), turn))
@@ -189,11 +186,6 @@ def env_algorithm(env, id, shared_info, n_battles):
             mat_state1, mat_state2 = shared_info.get_turn_balanced_states()
 
             mat_reward1, mat_reward2 = shared_info.get_turn_balanced_rewards()
-
-            if len(mat_state1) == 0 or len(mat_state2) == 0:
-                empty_array = 1 if len(mat_state1) == 0 else 2
-                print(f'Dumping episode log because mat_state{empty_array} is empty')
-                print(shared_info.episode_log)
 
             mat_done = shared_info.get_turn_balanced_done()
             
