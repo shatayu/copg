@@ -2,11 +2,13 @@ AGENT_1_ID = 0
 AGENT_2_ID = 1
 
 # initialize policies
-NUM_ACTIONS = 9 # 4 moves + 5 legal switches
+NUM_ACTIONS = 6 # 4 moves + 2 legal switches
 NULL_ACTION_ID = NUM_ACTIONS
+STATE_DIM = 4
+
 
 NUM_MOVES = 4
-SWITCH_OFFSET = 11 # env takes 16-21 as numbers corresponding to switches; CoPG distributions returns 5-10
+SWITCH_OFFSET = 12 # env takes 16-21 as numbers corresponding to switches; CoPG distributions returns 4-5
 
 TEAM = """
 Tapu Fini @ Expert Belt  

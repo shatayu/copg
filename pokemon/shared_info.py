@@ -2,7 +2,7 @@ from collections import Counter
 import numpy as np
 import torch
 
-from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NULL_ACTION_ID
+from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NULL_ACTION_ID, STATE_DIM
 
 class SharedInfo():
     def __init__(self):
@@ -110,7 +110,7 @@ class SharedInfo():
         return [x[0] for x in arr]
 
     def get_turn_balanced_states(self):
-        null_state = torch.FloatTensor(np.array([0, 0, 0]))
+        null_state = torch.FloatTensor(np.array([0] * STATE_DIM))
 
         b1, b2 = self.balance_arrays(self.mat_state[AGENT_1_ID],
                                     self.mat_state[AGENT_2_ID],
