@@ -43,6 +43,14 @@ Adamant Nature
 - Dragon Claw
 - Fire Fang
 - Shadow Claw
+
+Lucario (M) @ Sitrus Berry
+Ability: Inner Focus
+EVs: 248 HP / 252 SpA / 8 Spe
+Adamant Nature
+- Close Combat
+- Earthquake
+- Crunch
 """
 
 AGENT_1_ID = 0
@@ -52,7 +60,7 @@ AGENT_2_ID = 1
 NUM_ACTIONS = 3
 STATE_DIM = 3
 
-p1 = policy(STATE_DIM, NUM_ACTIONS)
+p1 = policy(STATE_DIM, NUM_ACTIONS + 1)
 q = critic(STATE_DIM)
 
 # initialize CoPG
@@ -86,7 +94,7 @@ def env_algorithm(env, id, shared_info, n_battles):
         print(f'Episode {episode}')
 
         # gather states from batch_size batches
-        for _ in range(batch_size):
+        for b in range(batch_size):
             done = False
             observation = env.reset()
 
@@ -100,9 +108,10 @@ def env_algorithm(env, id, shared_info, n_battles):
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
                 observation, reward, done, _ = env.step(action)
-                shared_info.mat_state[id].append(torch.FloatTensor(observation))
-                shared_info.mat_action[id].append(action)
-                shared_info.mat_reward[id].append(torch.FloatTensor(np.array([reward])))
+
+                shared_info.mat_state[id].append((torch.FloatTensor(observation), b, turn))
+                shared_info.mat_action[id].append((action, b, turn))
+                shared_info.mat_reward[id].append((torch.FloatTensor(np.array([reward])), b, turn))
 
                 shared_info.episode_log.append(f'Resulting state (E{episode}A{id}): {observation}')
 
@@ -115,46 +124,53 @@ def env_algorithm(env, id, shared_info, n_battles):
         # battles are multithreaded so one agent may finish a battle slightly earlier than the second;
         # the code below will run only when the second agent is fully caught up with the first
         if shared_info.num_battles_equal():
-            reward1, reward2 = shared_info.get_num_wins()
+            # reward1, reward2 = shared_info.get_num_wins()
 
-            writer.add_scalar('Steps/agent_1_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
-            writer.add_scalar('Steps/agent_2_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
-            writer.add_scalar('Steps/average_battle_length_in_batch', len(shared_info.mat_done) / batch_size, episode)
+            # writer.add_scalar('Steps/agent_1_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
+            # writer.add_scalar('Steps/agent_2_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
+            # writer.add_scalar('Steps/average_battle_length_in_batch', len(shared_info.mat_done) / batch_size, episode)
             
-            mat_state1 = shared_info.mat_state[AGENT_1_ID]
-            mat_state2 = shared_info.mat_state[AGENT_2_ID]
+            # mat_state1 = shared_info.mat_state[AGENT_1_ID]
+            # mat_state2 = shared_info.mat_state[AGENT_2_ID]
 
-            mat_reward1 = shared_info.mat_reward[AGENT_1_ID]
-            mat_reward2 = shared_info.mat_reward[AGENT_2_ID]
+            mat_state1, mat_state2 = shared_info.get_turn_balanced_states()
+
+            # mat_reward1 = shared_info.mat_reward[AGENT_1_ID]
+            # mat_reward2 = shared_info.mat_reward[AGENT_2_ID]
+
+            mat_reward1, mat_reward2 = shared_info.get_turn_balanced_rewards()
 
             if len(mat_state1) == 0 or len(mat_state2) == 0:
                 empty_array = 1 if len(mat_state1) == 0 else 2
                 print(f'Dumping episode log because mat_state{empty_array} is empty')
                 print(shared_info.episode_log)
 
-            mat_done = shared_info.mat_done
+            # mat_done = shared_info.mat_done
+            mat_done = shared_info.get_turn_balanced_done()
             
             # generate mat_action array
-            mat_action1 = shared_info.mat_action[AGENT_1_ID]
-            mat_action2 = shared_info.mat_action[AGENT_2_ID]
+            # mat_action1 = shared_info.mat_action[AGENT_1_ID]
+            # mat_action2 = shared_info.mat_action[AGENT_2_ID]
+
+            mat_action1, mat_action2 = shared_info.get_turn_balanced_actions()
 
             assert len(mat_action1) == len(mat_action2)
             mat_action = list(zip(mat_action1, mat_action2))
             mat_action = list(map(lambda x: torch.FloatTensor(np.array(list(x))), mat_action))
 
             # log action counts
-            agent_1_action_counts, agent_2_action_counts = shared_info.get_action_counts()
+            # agent_1_action_counts, agent_2_action_counts = shared_info.get_action_counts()
 
-            agent_1_action_0_arr = [x[1] for x in agent_1_action_counts if x[0] == 0.0]
-            agent_2_action_0_arr = [x[1] for x in agent_2_action_counts if x[0] == 0.0]
-            agent_1_action_0_count = agent_1_action_0_arr[0] if len(agent_1_action_0_arr) > 0 else 0
-            agent_2_action_0_count = agent_2_action_0_arr[0] if len(agent_2_action_0_arr) > 0 else 0
+            # agent_1_action_0_arr = [x[1] for x in agent_1_action_counts if x[0] == 0.0]
+            # agent_2_action_0_arr = [x[1] for x in agent_2_action_counts if x[0] == 0.0]
+            # agent_1_action_0_count = agent_1_action_0_arr[0] if len(agent_1_action_0_arr) > 0 else 0
+            # agent_2_action_0_count = agent_2_action_0_arr[0] if len(agent_2_action_0_arr) > 0 else 0
 
-            agent_1_action_0_rate = 100 * float(agent_1_action_0_count) / len(mat_action1)
-            agent_2_action_0_rate = 100 * float(agent_2_action_0_count) / len(mat_action2)
+            # agent_1_action_0_rate = 100 * float(agent_1_action_0_count) / len(mat_action1)
+            # agent_2_action_0_rate = 100 * float(agent_2_action_0_count) / len(mat_action2)
 
-            writer.add_scalar('Steps/agent_1_action_0_proportion', agent_1_action_0_rate, episode)
-            writer.add_scalar('Steps/agent_2_action_0_proportion', agent_2_action_0_rate, episode)
+            # writer.add_scalar('Steps/agent_1_action_0_proportion', agent_1_action_0_rate, episode)
+            # writer.add_scalar('Steps/agent_2_action_0_proportion', agent_2_action_0_rate, episode)
 
             # compare mat_action, mat_state1/mat_state2, mat_reward1/mat_reward2 to what is expected in soccer
             # might need to implement batch sizes and reset shared_info each batch
