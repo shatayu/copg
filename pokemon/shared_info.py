@@ -6,12 +6,12 @@ AGENT_2_ID = 1
 class SharedInfo():
     def __init__(self):
         self.num_agents = 2
-        self.num_completed_batches = [0] * self.num_agents
+        self.num_completed_battles = [0] * self.num_agents
 
         self.reset()
 
-    def batch_counts_equal(self):
-        return self.num_completed_batches[0] == self.num_completed_batches[1]
+    def num_battles_equal(self):
+        return self.num_completed_battles[0] == self.num_completed_battles[1]
     
     def get_num_wins(self):
         num_wins_agent_1 = len([t for t in self.mat_reward[AGENT_1_ID] if t > 0])

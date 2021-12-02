@@ -93,7 +93,6 @@ def env_algorithm(env, id, shared_info, n_battles):
             turn = observation[0]
 
             while not done:
-                print(f'Turn {turn}')
                 shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
@@ -111,11 +110,11 @@ def env_algorithm(env, id, shared_info, n_battles):
                     shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
 
                 turn = observation[0]
-            shared_info.num_completed_batches[id] += 1
+            shared_info.num_completed_battles[id] += 1
 
         # battles are multithreaded so one agent may finish a battle slightly earlier than the second;
         # the code below will run only when the second agent is fully caught up with the first
-        if shared_info.batch_counts_equal():
+        if shared_info.num_battles_equal():
             reward1, reward2 = shared_info.get_num_wins()
 
             writer.add_scalar('Steps/agent_1_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
