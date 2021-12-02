@@ -48,18 +48,20 @@ Adamant Nature
 AGENT_1_ID = 0
 AGENT_2_ID = 1
 
-
 # initialize policies
-p1 = policy(1,3)
-q = critic(1)
+NUM_ACTIONS = 3
+STATE_DIM = 3
+
+p1 = policy(STATE_DIM, NUM_ACTIONS)
+q = critic(STATE_DIM)
 
 # initialize CoPG
 optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
-batch_size = 10
-num_episode = 500
+batch_size = 1
+num_episode = 100
 
 folder_location = 'tensorboard/pokemon/'
 experiment_name = 'copg_v2_test/'
@@ -71,8 +73,7 @@ writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
-        opponent_healths = [mon._current_hp for mon in battle.opponent_team.values()]
-        return np.array(opponent_healths)
+        return np.array([battle.turn, len(battle.available_switches), len(battle.available_moves)])
 
 # things to log
 # which move sequences were used
@@ -89,7 +90,10 @@ def env_algorithm(env, id, shared_info, n_battles):
             done = False
             observation = env.reset()
 
+            turn = observation[0]
+
             while not done:
+                print(f'Turn {turn}')
                 shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
@@ -106,6 +110,7 @@ def env_algorithm(env, id, shared_info, n_battles):
                 if id == AGENT_1_ID:
                     shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
 
+                turn = observation[0]
             shared_info.num_completed_batches[id] += 1
 
         # battles are multithreaded so one agent may finish a battle slightly earlier than the second;
@@ -141,8 +146,10 @@ def env_algorithm(env, id, shared_info, n_battles):
             # log action counts
             agent_1_action_counts, agent_2_action_counts = shared_info.get_action_counts()
 
-            agent_1_action_0_count = [x[1] for x in agent_1_action_counts if x[0] == 0.0][0]
-            agent_2_action_0_count = [x[1] for x in agent_2_action_counts if x[0] == 0.0][0]
+            agent_1_action_0_arr = [x[1] for x in agent_1_action_counts if x[0] == 0.0]
+            agent_2_action_0_arr = [x[1] for x in agent_2_action_counts if x[0] == 0.0]
+            agent_1_action_0_count = agent_1_action_0_arr[0] if len(agent_1_action_0_arr) > 0 else 0
+            agent_2_action_0_count = agent_2_action_0_arr[0] if len(agent_2_action_0_arr) > 0 else 0
 
             agent_1_action_0_rate = 100 * float(agent_1_action_0_count) / len(mat_action1)
             agent_2_action_0_rate = 100 * float(agent_2_action_0_count) / len(mat_action2)
