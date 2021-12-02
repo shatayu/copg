@@ -33,26 +33,7 @@ from collections import Counter
 import time
 
 from shared_info import SharedInfo
-from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID
-
-
-team = """
-Garchomp (M) @ Sitrus Berry
-Ability: Rough Skin
-EVs: 248 HP / 252 SpA / 8 Spe
-Adamant Nature
-- Dragon Claw
-- Fire Fang
-- Shadow Claw
-
-Lucario (M) @ Sitrus Berry
-Ability: Inner Focus
-EVs: 248 HP / 252 SpA / 8 Spe
-Adamant Nature
-- Close Combat
-- Earthquake
-- Crunch
-"""
+from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID, TEAM
 
 # initialize policies
 STATE_DIM = 3
@@ -278,7 +259,7 @@ async def launch_battles(player, opponent):
     )
     await battles_coroutine
 
-teambuilder = ConstantTeambuilder(team)
+teambuilder = ConstantTeambuilder(TEAM)
 player1 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 player2 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 
