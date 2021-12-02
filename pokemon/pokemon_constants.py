@@ -1,0 +1,6 @@
+AGENT_1_ID = 0
+AGENT_2_ID = 1
+
+# initialize policies
+NUM_ACTIONS = 3
+NULL_ACTION_ID = NUM_ACTIONS

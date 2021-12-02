@@ -2,8 +2,7 @@ from collections import Counter
 import numpy as np
 import torch
 
-AGENT_1_ID = 0
-AGENT_2_ID = 1
+from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NULL_ACTION_ID
 
 class SharedInfo():
     def __init__(self):
@@ -120,7 +119,7 @@ class SharedInfo():
         return self.get_element(b1), self.get_element(b2)
     
     def get_turn_balanced_actions(self):
-        null_action = torch.tensor(3)
+        null_action = torch.tensor(NULL_ACTION_ID)
         b1, b2 = self.balance_arrays(self.mat_action[AGENT_1_ID],
                                     self.mat_action[AGENT_2_ID],
                                     null_action

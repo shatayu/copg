@@ -33,6 +33,7 @@ from collections import Counter
 import time
 
 from shared_info import SharedInfo
+from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID
 
 
 team = """
@@ -53,14 +54,10 @@ Adamant Nature
 - Crunch
 """
 
-AGENT_1_ID = 0
-AGENT_2_ID = 1
-
 # initialize policies
-NUM_ACTIONS = 3
 STATE_DIM = 3
 
-p1 = policy(STATE_DIM, NUM_ACTIONS + 1)
+p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last action id
 q = critic(STATE_DIM)
 
 # initialize CoPG
@@ -105,6 +102,11 @@ def env_algorithm(env, id, shared_info, n_battles):
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
                 action = dist.sample()
+
+                if action.item() == NULL_ACTION_ID:
+                    # randomly select one of the other actions
+                    action = torch.tensor(np.random.choice(list(range(NUM_ACTIONS))))
+            
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
                 observation, reward, done, _ = env.step(action)
