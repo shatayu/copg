@@ -2,7 +2,6 @@ import asyncio
 import numpy as np
 from tabulate import tabulate
 from threading import Thread
-from shared_info import SharedInfo
 
 from poke_env.utils import to_id_str
 from poke_env.player.env_player import (
@@ -33,76 +32,25 @@ from markov_soccer.soccer_state import get_relative_state, get_two_state
 from collections import Counter
 import time
 
-# https://pokepast.es/78d5c6bf90f769de
-# selected because this team peaked at #3 on the showdown ladder
-# https://youtu.be/xwj9d3wjwhg
+from shared_info import SharedInfo
+
 
 team = """
-Tapu Fini @ Expert Belt  
-Ability: Misty Surge  
-EVs: 4 Def / 252 SpA / 252 Spe  
-Modest Nature  
-- Hydro Pump  
-- Ice Beam  
-- Moonblast  
-- Knock Off  
-
-Mamoswine @ Leftovers  
-Ability: Thick Fat  
-EVs: 252 Atk / 4 SpD / 252 Spe  
-Adamant Nature  
-- Earthquake  
-- Icicle Crash  
-- Ice Shard  
-- Substitute  
-
-Magnezone @ Air Balloon  
-Ability: Magnet Pull  
-Shiny: Yes  
-EVs: 252 Def / 116 SpA / 140 Spe  
-Bold Nature  
-IVs: 0 Atk  
-- Iron Defense  
-- Body Press  
-- Thunderbolt  
-- Flash Cannon  
-
-Dragonite @ Heavy-Duty Boots  
-Ability: Multiscale  
-EVs: 248 HP / 52 Atk / 56 Def / 152 Spe  
-Adamant Nature  
-- Dragon Dance  
-- Ice Punch  
-- Earthquake  
-- Roost  
-
-Heatran @ Leftovers  
-Ability: Flash Fire  
-EVs: 252 HP / 128 SpD / 128 Spe  
-Calm Nature  
-IVs: 0 Atk  
-- Stealth Rock  
-- Magma Storm  
-- Earth Power  
-- Taunt  
-
-Kartana @ Choice Scarf  
-Ability: Beast Boost  
-EVs: 252 Atk / 4 SpD / 252 Spe  
-Jolly Nature  
-- Leaf Blade  
-- Sacred Sword  
-- Knock Off  
-- Smart Strike  
+Garchomp (M) @ Sitrus Berry
+Ability: Rough Skin
+EVs: 248 HP / 252 SpA / 8 Spe
+Adamant Nature
+- Dragon Claw
+- Fire Fang
+- Shadow Claw
 """
 
 AGENT_1_ID = 0
 AGENT_2_ID = 1
 
-NULL_ACTION_ID = 23
 
 # initialize policies
-p1 = policy(1,24)
+p1 = policy(1,3)
 q = critic(1)
 
 # initialize CoPG
@@ -110,11 +58,11 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
-batch_size = 1
-num_episode = 10
+batch_size = 10
+num_episode = 500
 
 folder_location = 'tensorboard/pokemon/'
-experiment_name = 'copg_6v6_v1/'
+experiment_name = 'copg_v2_test/'
 directory = '../' + folder_location + experiment_name + 'model'
 
 if not os.path.exists(directory):
@@ -123,12 +71,9 @@ writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
-        # opponent_healths = [mon._current_hp for mon in battle.opponent_team.values()]
-        self.battle = battle
+        opponent_healths = [mon._current_hp for mon in battle.opponent_team.values()]
+        return np.array(opponent_healths)
 
-        available_moves = list(range(len(battle.available_moves)))
-        available_switches = [16 + x for x in list(range(len(battle.available_switches)))]
-        return (np.array([battle.turn]), available_moves, available_switches)
 # things to log
 # which move sequences were used
 # what percentage of the time did the agent use the optimal move sequence (as measured by winning in as few moves as possible)
@@ -142,35 +87,24 @@ def env_algorithm(env, id, shared_info, n_battles):
         # gather states from batch_size batches
         for _ in range(batch_size):
             done = False
-            all_data = env.reset()
-            observation = all_data[0]
-
-            turn = observation[0]
+            observation = env.reset()
 
             while not done:
                 shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
                 action = dist.sample()
-
-                legal_actions = all_data[1] + all_data[2]
-
-                while action.item() not in legal_actions:
-                    action = dist.sample()
-
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
-                all_data, reward, done, _ = env.step(action)
-                observation = all_data[0]
+                observation, reward, done, _ = env.step(action)
+                shared_info.mat_state[id].append(torch.FloatTensor(observation))
+                shared_info.mat_action[id].append(action)
+                shared_info.mat_reward[id].append(torch.FloatTensor(np.array([reward])))
 
-                # new way with turns for balanced action counts
-                shared_info.mat_state[id].append((torch.FloatTensor([observation]), turn))
-                shared_info.mat_action[id].append((action, turn))
-                shared_info.mat_reward[id].append((torch.FloatTensor(np.array([reward])), turn))
+                shared_info.episode_log.append(f'Resulting state (E{episode}A{id}): {observation}')
 
                 if id == AGENT_1_ID:
-                    is_done = torch.FloatTensor([1 - int(done)])
-                    shared_info.mat_done.append((is_done, turn))
+                    shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
 
             shared_info.num_completed_batches[id] += 1
 
@@ -183,18 +117,41 @@ def env_algorithm(env, id, shared_info, n_battles):
             writer.add_scalar('Steps/agent_2_win_rate', 100 * float(reward1) / (reward1 + reward2), episode)
             writer.add_scalar('Steps/average_battle_length_in_batch', len(shared_info.mat_done) / batch_size, episode)
             
-            mat_state1, mat_state2 = shared_info.get_turn_balanced_states()
+            mat_state1 = shared_info.mat_state[AGENT_1_ID]
+            mat_state2 = shared_info.mat_state[AGENT_2_ID]
 
-            mat_reward1, mat_reward2 = shared_info.get_turn_balanced_rewards()
+            mat_reward1 = shared_info.mat_reward[AGENT_1_ID]
+            mat_reward2 = shared_info.mat_reward[AGENT_2_ID]
 
-            mat_done = shared_info.get_turn_balanced_done()
+            if len(mat_state1) == 0 or len(mat_state2) == 0:
+                empty_array = 1 if len(mat_state1) == 0 else 2
+                print(f'Dumping episode log because mat_state{empty_array} is empty')
+                print(shared_info.episode_log)
+
+            mat_done = shared_info.mat_done
             
             # generate mat_action array
-            mat_action1, mat_action2 = shared_info.get_turn_balanced_actions()
+            mat_action1 = shared_info.mat_action[AGENT_1_ID]
+            mat_action2 = shared_info.mat_action[AGENT_2_ID]
 
             assert len(mat_action1) == len(mat_action2)
             mat_action = list(zip(mat_action1, mat_action2))
             mat_action = list(map(lambda x: torch.FloatTensor(np.array(list(x))), mat_action))
+
+            # log action counts
+            agent_1_action_counts, agent_2_action_counts = shared_info.get_action_counts()
+
+            agent_1_action_0_count = [x[1] for x in agent_1_action_counts if x[0] == 0.0][0]
+            agent_2_action_0_count = [x[1] for x in agent_2_action_counts if x[0] == 0.0][0]
+
+            agent_1_action_0_rate = 100 * float(agent_1_action_0_count) / len(mat_action1)
+            agent_2_action_0_rate = 100 * float(agent_2_action_0_count) / len(mat_action2)
+
+            writer.add_scalar('Steps/agent_1_action_0_proportion', agent_1_action_0_rate, episode)
+            writer.add_scalar('Steps/agent_2_action_0_proportion', agent_2_action_0_rate, episode)
+
+            # compare mat_action, mat_state1/mat_state2, mat_reward1/mat_reward2 to what is expected in soccer
+            # might need to implement batch sizes and reset shared_info each batch
 
             val1 = q(torch.stack(mat_state1))
             val1 = val1.detach()
