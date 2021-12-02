@@ -33,7 +33,7 @@ from collections import Counter
 import time
 
 from shared_info import SharedInfo
-from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID, TEAM
+from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID, TEAM, SWITCH_OFFSET, NUM_MOVES
 
 # initialize policies
 STATE_DIM = 3
@@ -47,7 +47,7 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
 batch_size = 1
-num_episode = 100
+num_episode = 1
 
 folder_location = 'tensorboard/pokemon/'
 experiment_name = 'copg_v2_test/'
@@ -83,14 +83,19 @@ def env_algorithm(env, id, shared_info, n_battles):
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
                 action = dist.sample()
-
+                action_for_env = action.item()
+                    
                 if action.item() == NULL_ACTION_ID:
                     # randomly select one of the other actions
                     action = torch.tensor(np.random.choice(list(range(NUM_ACTIONS))))
-            
+                    action_for_env = action.item()
+                
+                if action.item() > NUM_MOVES - 1: # is a switch; adjust to the value env recognizes
+                    action_for_env = action.item() + SWITCH_OFFSET
+
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
-                observation, reward, done, _ = env.step(action)
+                observation, reward, done, _ = env.step(action_for_env)
 
                 shared_info.mat_state[id].append((torch.FloatTensor(observation), b, turn))
                 shared_info.mat_action[id].append((action, b, turn))
