@@ -40,6 +40,16 @@ from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_I
 from poke_env.player.player import Player
 from poke_env.player.random_player import RandomPlayer
 
+from poke_env.data import POKEDEX, MOVES, NATURES
+from functools import lru_cache
+
+import requests
+
+
+@lru_cache(None)
+def pokemon_to_int(mon):
+    return POKEDEX[mon.species]["num"]
+
 # initialize policies
 p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last action id
 q = critic(STATE_DIM)
@@ -50,24 +60,43 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
 batch_size = 5
-num_episode = 10
+num_episode = 5
 
-folder_location = 'tensorboard/pokemon/'
-experiment_name = '3v3_test/'
-directory = '../' + folder_location + experiment_name + 'model'
+folder_location = 'tensorboard/pokemon_test/'
+experiment_name = 'observations'
+directory = '../' + folder_location + '/' + experiment_name + 'model'
+
+results_file_random = open(f'{experiment_name}_random.txt', "w")
+results_file_max_damage = open(f'{experiment_name}_max_damage.txt', "w")
 
 if not os.path.exists(directory):
     os.makedirs(directory)
 writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 
+
+def get_current_state(battle):
+    # remember to change STATE_DIM in pokemon_constants.py
+    is_my_current_pokemon_fainted = battle.active_pokemon.status == Status.FNT
+    is_their_current_pokemon_fainted = battle.opponent_active_pokemon.status == Status.FNT
+
+    return np.array([battle.turn,
+        len(battle.available_moves),
+        len(battle.available_switches),
+        1 if is_my_current_pokemon_fainted else 0,
+        1 if is_their_current_pokemon_fainted else 0,
+        pokemon_to_int(battle.active_pokemon),
+        battle.active_pokemon.current_hp_fraction,
+        pokemon_to_int(battle.opponent_active_pokemon),
+        battle.opponent_active_pokemon.current_hp_fraction
+    ])
+
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
-        is_current_pokemon_fainted = battle.active_pokemon.status == Status.FNT
-        return np.array([battle.turn, len(battle.available_moves), len(battle.available_switches), 1 if is_current_pokemon_fainted else 0])
+        return get_current_state(battle)
+
 class COPGTestPlayer(Player):
     def choose_move(self, battle):
-        is_current_pokemon_fainted = battle.active_pokemon.status == Status.FNT
-        observation = np.array([battle.turn, len(battle.available_moves), len(battle.available_switches), 1 if is_current_pokemon_fainted else 0])
+        observation = get_current_state(battle)
         
         # If the player can attack, it will
         action_prob = p1(torch.FloatTensor(observation))
@@ -128,7 +157,7 @@ def adjust_action_for_env(action_number):
 
 def env_algorithm(env, id, shared_info, superbatch, n_battles):
     for episode in range(n_battles):
-        print(f'Episode {episode}')
+        print(f'Superbatch {superbatch} Episode {episode}')
 
         # gather states from batch_size batches
         for b in range(batch_size):
@@ -286,7 +315,7 @@ player1 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuild
 player2 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 
 
-NUM_SUPERBATCHES = 4
+NUM_SUPERBATCHES = 20
 
 async def test(superbatch):
     start = time.time()
@@ -343,6 +372,10 @@ async def test(superbatch):
     writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
     writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
 
+    results_file_random.write(f'{wins_vs_random}\n')
+    results_file_max_damage.write(f'{wins_vs_max_damage}\n')
+
+
 for superbatch in range(NUM_SUPERBATCHES):
     player1._start_new_battle = True
     player2._start_new_battle = True
@@ -366,3 +399,6 @@ for superbatch in range(NUM_SUPERBATCHES):
 
     # test
     loop.run_until_complete(test(superbatch))
+
+results_file_random.close()
+results_file_max_damage.close()
