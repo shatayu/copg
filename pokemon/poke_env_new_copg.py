@@ -62,7 +62,7 @@ optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 batch_size = 100
 num_episode = 100
 
-folder_location = 'tensorboard/pokemon_test/'
+folder_location = 'tensorboard/pokemon_with_ids/'
 experiment_name = 'observations'
 directory = '../' + folder_location + '/' + experiment_name + 'model'
 
