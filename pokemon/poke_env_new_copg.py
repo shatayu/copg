@@ -59,8 +59,8 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
-batch_size = 5
-num_episode = 5
+batch_size = 100
+num_episode = 100
 
 folder_location = 'tensorboard/pokemon_test/'
 experiment_name = 'observations'
@@ -315,7 +315,7 @@ player1 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuild
 player2 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 
 
-NUM_SUPERBATCHES = 20
+NUM_SUPERBATCHES = 50
 
 async def test(superbatch):
     start = time.time()
