@@ -64,7 +64,7 @@ num_episode = 100
 NUM_SUPERBATCHES = 100
 
 
-folder_location = 'tensorboard/pokemon_with_ids/'
+folder_location = 'tensorboard/pokemon_full_team/'
 experiment_name = 'observations'
 directory = '../' + folder_location + '/' + experiment_name + 'model'
 
