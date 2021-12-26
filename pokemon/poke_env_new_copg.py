@@ -61,6 +61,8 @@ optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
 batch_size = 100
 num_episode = 100
+NUM_SUPERBATCHES = 100
+
 
 folder_location = 'tensorboard/pokemon_with_ids/'
 experiment_name = 'observations'
@@ -343,9 +345,6 @@ async def launch_battles(player, opponent):
 teambuilder = ConstantTeambuilder(TEAM)
 player1 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 player2 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
-
-
-NUM_SUPERBATCHES = 50
 
 async def test(superbatch):
     start = time.time()
