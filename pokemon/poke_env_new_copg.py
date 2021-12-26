@@ -59,9 +59,9 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
-batch_size = 5
-num_episode = 5
-NUM_SUPERBATCHES = 10
+batch_size = 100
+num_episode = 100
+NUM_SUPERBATCHES = 100
 
 
 folder_location = 'tensorboard/pokemon_full_team_and_opponent/'
