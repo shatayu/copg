@@ -59,17 +59,14 @@ optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
 
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
 
-batch_size = 100
-num_episode = 100
-NUM_SUPERBATCHES = 100
+batch_size = 5
+num_episode = 5
+NUM_SUPERBATCHES = 10
 
 
 folder_location = 'tensorboard/pokemon_full_team_and_opponent/'
 experiment_name = 'observations'
 directory = '../' + folder_location + '/' + experiment_name + 'model'
-
-results_file_random = open(f'{experiment_name}_random.txt', "w")
-results_file_max_damage = open(f'{experiment_name}_max_damage.txt', "w")
 
 if not os.path.exists(directory):
     os.makedirs(directory)
@@ -193,6 +190,9 @@ def adjust_action_for_env(action_number):
 def env_algorithm(env, id, shared_info, superbatch, n_battles):
     for episode in range(n_battles):
         print(f'Superbatch {superbatch} Episode {episode}')
+
+        with open(f'{experiment_name}_progress.txt', "a") as progress_file:
+            progress_file.write(f'Superbatch {superbatch} Episode {episode}\n')
 
         # gather states from batch_size batches
         for b in range(batch_size):
@@ -404,8 +404,11 @@ async def test(superbatch):
     writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
     writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
 
-    results_file_random.write(f'{wins_vs_random}\n')
-    results_file_max_damage.write(f'{wins_vs_max_damage}\n')
+    with open(f'{experiment_name}_random.txt', "a") as results_file_random:
+        results_file_random.write(f'{wins_vs_random}\n')
+
+    with open(f'{experiment_name}_max_damage.txt', "a") as results_file_max_damage:
+        results_file_max_damage.write(f'{wins_vs_max_damage}\n')
 
 
 for superbatch in range(NUM_SUPERBATCHES):
@@ -431,6 +434,3 @@ for superbatch in range(NUM_SUPERBATCHES):
 
     # test
     loop.run_until_complete(test(superbatch))
-
-results_file_random.close()
-results_file_max_damage.close()
