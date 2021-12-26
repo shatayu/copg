@@ -64,7 +64,7 @@ num_episode = 100
 NUM_SUPERBATCHES = 100
 
 
-folder_location = 'tensorboard/pokemon_full_team/'
+folder_location = 'tensorboard/pokemon_full_team_and_opponent/'
 experiment_name = 'observations'
 directory = '../' + folder_location + '/' + experiment_name + 'model'
 
@@ -86,7 +86,10 @@ def one_hot_encode_status(status, fill_null_values):
     return array
     
 def encode_pokemon(p, fill_null_values=False):
-    return [1 if p.active else 0, p.current_hp_fraction] + one_hot_encode_status(p.status, fill_null_values)
+    if fill_null_values:
+        return [0.0, 1.0] + one_hot_encode_status(None, fill_null_values)
+    else:
+        return [1 if p.active else 0, p.current_hp_fraction] + one_hot_encode_status(p.status, fill_null_values)
 
 def get_team_encoding(team):
     pokemon_object_list = list(team.values())
