@@ -13,6 +13,8 @@ from poke_env.teambuilder.constant_teambuilder import ConstantTeambuilder
 import torch
 import sys
 import os
+from datetime import datetime
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 sys.path.insert(0, '..')
 from copg_optim import CoPG
@@ -44,7 +46,22 @@ from poke_env.data import POKEDEX, MOVES, NATURES
 from functools import lru_cache
 
 import requests
+import sys
 
+
+# accept command line arguments
+
+if len(sys.argv) != 4 and len(sys.argv) != 5:
+    print('Please provide batch_size, num_episode, num_superbatches, and a name (optional) in that order')
+    sys.exit()
+
+batch_size = int(sys.argv[1])
+num_episode = int(sys.argv[2])
+NUM_SUPERBATCHES = int(sys.argv[3])
+
+user_provided_name = datetime.now().strftime('%Y_%m_%d_%H_%M_%s') # default to timestamp
+if len(sys.argv) == 5:
+    user_provided_name = sys.argv[4]
 
 @lru_cache(None)
 def pokemon_to_int(mon):
@@ -55,17 +72,12 @@ p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last act
 q = critic(STATE_DIM)
 
 # initialize CoPG
-optim_q = torch.optim.Adam(q.parameters(), lr=0.001)
+optim_q = torch.optim.Adam(q.parameters(), lr=0.1e-3)
 
-optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-2)
+optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-3)
 
-batch_size = 100
-num_episode = 100
-NUM_SUPERBATCHES = 100
-
-
-folder_location = 'tensorboard/pokemon_full_team_and_opponent/'
-experiment_name = 'observations'
+folder_location = f'tensorboard/pokemon_{user_provided_name}/'
+experiment_name = f'observations'
 directory = '../' + folder_location + '/' + experiment_name + 'model'
 
 if not os.path.exists(directory):
@@ -114,11 +126,13 @@ def get_opponent_team_encoding(opponent_team, agent_team):
 
 def get_current_state(battle):
     # remember to change STATE_DIM in pokemon_constants.py
-    result = np.array(
-        [battle.turn, len(battle.available_moves), len(battle.available_switches)] + \
-            get_team_encoding(battle.team) + \
-            get_opponent_team_encoding(battle.opponent_team, battle.team)
-        )
+    # result = np.array(
+    #     [battle.turn, len(battle.available_moves), len(battle.available_switches)] + \
+    #         get_team_encoding(battle.team) + \
+    #         get_opponent_team_encoding(battle.opponent_team, battle.team)
+    #     )
+
+    result = np.array([battle.turn, len(battle.available_moves), len(battle.available_switches)])
 
     return result
 
@@ -189,10 +203,11 @@ def adjust_action_for_env(action_number):
 
 def env_algorithm(env, id, shared_info, superbatch, n_battles):
     for episode in range(n_battles):
+        timestamp = superbatch * n_battles + episode
         print(f'Superbatch {superbatch} Episode {episode}')
 
-        with open(f'{experiment_name}_progress.txt', "a") as progress_file:
-            progress_file.write(f'Superbatch {superbatch} Episode {episode}\n')
+        # with open(f'{experiment_name}_progress.txt', "a") as progress_file:
+        #     progress_file.write(f'Superbatch {superbatch} Episode {episode}\n')
 
         # gather states from batch_size batches
         for b in range(batch_size):
@@ -214,7 +229,9 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
 
                 shared_info.mat_state[id].append((torch.FloatTensor(observation), b, turn))
                 shared_info.mat_action[id].append((action, b, turn))
+                shared_info.mat_action_log_probs[id].append((dist.log_prob(action), b, turn))
                 shared_info.mat_reward[id].append((torch.FloatTensor(np.array([reward])), b, turn))
+                shared_info.mat_reward_actual_number[id].append(reward)
 
                 shared_info.episode_log.append(f'Resulting state (E{episode}A{id}): {observation}')
 
@@ -222,11 +239,29 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
                     shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
 
                 turn = observation[0]
+
             shared_info.num_completed_battles[id] += 1
+
+            if id == AGENT_1_ID:
+                shared_info.mat_num_turns.append(int(turn))
 
         # battles are multithreaded so one agent may finish a battle slightly earlier than the second;
         # the code below will run only when the second agent is fully caught up with the first
-        if shared_info.num_battles_equal():
+        # after all battles in the batch are complete
+        if shared_info.num_battles_equal():         
+            # log trajectory
+
+            # print(f'num_turns_array = {shared_info.mat_num_turns}')
+            # print(f'trajectory length = {np.mean(shared_info.mat_num_turns)}')
+            writer.add_scalar('trajectory_length', np.mean(shared_info.mat_num_turns), timestamp)
+
+            # log rewards
+            # print(f'agent 1 reward = {np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID])}')
+            # print(f'agent 2 reward = {np.mean(shared_info.mat_reward_actual_number[AGENT_2_ID])}')
+            # print(np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID]))
+            writer.add_scalar('agent_1_reward', np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID]), timestamp)
+            writer.add_scalar('agent_2_reward', np.mean(shared_info.mat_reward_actual_number[AGENT_2_ID]), timestamp)
+
             mat_state1, mat_state2 = shared_info.get_turn_balanced_states()
 
             mat_reward1, mat_reward2 = shared_info.get_turn_balanced_rewards()
@@ -239,6 +274,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             mat_done = shared_info.get_turn_balanced_done()
 
             mat_action1, mat_action2 = shared_info.get_turn_balanced_actions()
+            mat_action1_log_probs, mat_action2_log_probs = shared_info.get_turn_balanced_action_log_probs()
 
             assert len(mat_action1) == len(mat_action2)
             mat_action = list(zip(mat_action1, mat_action2))
@@ -249,20 +285,36 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             next_value = 0  # because currently we end ony when its done which is equivalent to no next state
 
             returns_np1 = get_advantage(next_value, torch.stack(mat_reward1), val1, torch.stack(mat_done), gamma=0.99, tau=0.95)
-
+            
+            # compute returns
             returns1 = torch.cat(returns_np1)
+            returns_1_number = torch.sum(returns1).item()
+            writer.add_scalar('Returns/agent_1', returns_1_number, timestamp)
             advantage_mat1 = returns1 - val1.transpose(0,1)
+            
+            # compute loss for actor1
+            actor1_loss = (-torch.Tensor(mat_action1_log_probs) * advantage_mat1)[0]
+            total_actor1_loss = torch.sum(actor1_loss).item()
+            writer.add_scalar('Loss/actor1', total_actor1_loss, timestamp)
 
             val2 = q(torch.stack(mat_state2))
             val2 = val2.detach()
             next_value = 0  # because currently we end ony when its done which is equivalent to no next state
             returns_np2 = get_advantage(next_value, torch.stack(mat_reward2), val2, torch.stack(mat_done), gamma=0.99, tau=0.95)
-
+            
+            # compute and log returns for agent 2
             returns2 = torch.cat(returns_np2)
+            returns_2_number = torch.mean(returns2).item()
+            writer.add_scalar('Returns/agent_2', returns_2_number, timestamp)
             advantage_mat2 = returns2 - val2.transpose(0,1)
 
+            # compute loss for actor2
+            actor2_loss = (-torch.Tensor(mat_action2_log_probs) * advantage_mat2)[0]
+            total_actor2_loss = torch.sum(actor2_loss).item()
+            writer.add_scalar('Loss/actor2', total_actor2_loss, timestamp)
+
             for loss_critic, gradient_norm in critic_update(torch.cat([torch.stack(mat_state1),torch.stack(mat_state2)]), torch.cat([returns1,returns2]).view(-1,1), q, optim_q):
-                writer.add_scalar('Loss/critic', loss_critic, superbatch * n_battles + episode)
+                writer.add_scalar('Loss/critic', loss_critic, timestamp)
             ed_q_time = time.time()
 
             val1_p = advantage_mat1
@@ -309,18 +361,18 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             optim.step(ob + ob2 + ob3, lp1,lp2)
             ed_time = time.time()
 
-            writer.add_scalar('Entropy/agent1', dist_batch1.entropy().mean().detach(), superbatch * n_battles + episode)
-            writer.add_scalar('Entropy/agent2', dist_batch2.entropy().mean().detach(), superbatch * n_battles + episode)
+            writer.add_scalar('Entropy/agent1', dist_batch1.entropy().mean().detach(), timestamp)
+            writer.add_scalar('Entropy/agent2', dist_batch2.entropy().mean().detach(), timestamp)
             
             shared_info.reset()
 
             if episode%100==0:
                 torch.save(p1.state_dict(),
                         '../' + folder_location + experiment_name + 'model/agent1_' + str(
-                            superbatch * n_battles + episode) + ".pth")
+                            timestamp) + ".pth")
                 torch.save(q.state_dict(),
                         '../' + folder_location + experiment_name + 'model/val_' + str(
-                            superbatch * n_battles + episode) + ".pth")
+                            timestamp) + ".pth")
 
 # boilerplate code to run battles
 def env_algorithm_wrapper(player, id, shared_info, superbatch, kwargs):
@@ -404,11 +456,11 @@ async def test(superbatch):
     writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
     writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
 
-    with open(f'{experiment_name}_random.txt', "a") as results_file_random:
-        results_file_random.write(f'{wins_vs_random}\n')
+    # with open(f'{experiment_name}_random.txt', "a") as results_file_random:
+    #     results_file_random.write(f'{wins_vs_random}\n')
 
-    with open(f'{experiment_name}_max_damage.txt', "a") as results_file_max_damage:
-        results_file_max_damage.write(f'{wins_vs_max_damage}\n')
+    # with open(f'{experiment_name}_max_damage.txt', "a") as results_file_max_damage:
+    #     results_file_max_damage.write(f'{wins_vs_max_damage}\n')
 
 
 for superbatch in range(NUM_SUPERBATCHES):

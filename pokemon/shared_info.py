@@ -30,11 +30,15 @@ class SharedInfo():
         # one per episode
         self.mat_done = []
         self.episode_log = []
+        self.mat_num_turns = []
 
         # one per agent
         self.mat_action = [[] for _ in range(self.num_agents)]
+        self.mat_action_log_probs = [[] for _ in range(self.num_agents)]
         self.mat_state = [[] for _ in range(self.num_agents)]
         self.mat_reward = [[] for _ in range(self.num_agents)]
+        self.mat_reward_actual_number = [[] for _ in range(self.num_agents)]
+
 
     # returns -1 if item1 < item2, 0 if item1 = item2, 1 if item1 > item2
     def compare_batch_turn(self, batch1, turn1, batch2, turn2):
@@ -124,6 +128,15 @@ class SharedInfo():
                                     self.mat_action[AGENT_2_ID],
                                     null_action
                                     )
+        return self.get_element(b1), self.get_element(b2)
+
+    def get_turn_balanced_action_log_probs(self):
+        null_prob = torch.tensor(0)
+        b1, b2 = self.balance_arrays(self.mat_action_log_probs[AGENT_1_ID],
+                                    self.mat_action_log_probs[AGENT_2_ID],
+                                    null_prob
+                                    )
+        
         return self.get_element(b1), self.get_element(b2)
 
     def get_turn_balanced_rewards(self):
