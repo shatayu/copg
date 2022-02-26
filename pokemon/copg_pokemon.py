@@ -74,9 +74,9 @@ p2 = policy(STATE_DIM, NUM_ACTIONS + 1)
 q = critic(STATE_DIM)
 
 # initialize CoPG
-optim_q = torch.optim.Adam(q.parameters(), lr=1e-3)
+optim_q = torch.optim.Adam(q.parameters(), lr=1e-2)
 
-optim = CoPG(p1.parameters(), p2.parameters(), lr=1e-3)
+optim = CoPG(p1.parameters(), p2.parameters(), lr=1e-4)
 
 folder_location = f'tensorboard/pokemon_{user_provided_name}/'
 experiment_name = f'observations'
