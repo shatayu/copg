@@ -41,6 +41,7 @@ from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_I
 
 from poke_env.player.player import Player
 from poke_env.player.random_player import RandomPlayer
+from poke_env.player_configuration import PlayerConfiguration
 
 from poke_env.data import POKEDEX, MOVES, NATURES
 from functools import lru_cache
@@ -69,12 +70,13 @@ def pokemon_to_int(mon):
 
 # initialize policies
 p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last action id
+p2 = policy(STATE_DIM, NUM_ACTIONS + 1)
 q = critic(STATE_DIM)
 
 # initialize CoPG
-optim_q = torch.optim.Adam(q.parameters(), lr=0.1e-3)
+optim_q = torch.optim.Adam(q.parameters(), lr=1e-3)
 
-optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-3)
+optim = CoPG(p1.parameters(), p2.parameters(), lr=1e-3)
 
 folder_location = f'tensorboard/pokemon_{user_provided_name}/'
 experiment_name = f'observations'
@@ -218,7 +220,12 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
 
             while not done:
                 shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
-                action_prob = p1(torch.FloatTensor(observation))
+            
+                if id == AGENT_1_ID:
+                    action_prob = p1(torch.FloatTensor(observation))
+                else:
+                    action_prob = p2(torch.FloatTensor(observation))
+
                 dist = Categorical(action_prob)
                 action = make_action_legal(dist.sample().item(), observation[1], observation[2])
                 action_for_env = adjust_action_for_env(action.item())
@@ -324,7 +331,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             action_both = torch.stack(mat_action)
             log_probs1 = dist_batch1.log_prob(action_both[:,0])
 
-            pi_a2_s = p1(torch.stack(mat_state2))
+            pi_a2_s = p2(torch.stack(mat_state2))
             dist_batch2 = Categorical(pi_a2_s)
             log_probs2 = dist_batch2.log_prob(action_both[:,1])
 
@@ -370,6 +377,9 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
                 torch.save(p1.state_dict(),
                         '../' + folder_location + experiment_name + 'model/agent1_' + str(
                             timestamp) + ".pth")
+                torch.save(p2.state_dict(),
+                        '../' + folder_location + experiment_name + 'model/agent1_' + str(
+                            timestamp) + ".pth")
                 torch.save(q.state_dict(),
                         '../' + folder_location + experiment_name + 'model/val_' + str(
                             timestamp) + ".pth")
@@ -398,8 +408,11 @@ async def launch_battles(player, opponent):
     await battles_coroutine
 
 teambuilder = ConstantTeambuilder(TEAM)
-player1 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
-player2 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
+player1_config = PlayerConfiguration(f'p1_{time.time_ns()}', None)  # Or password instead of None if playing online
+player2_config = PlayerConfiguration(f'p2_{time.time_ns()}', None)  # Or password instead of None if playing online
+
+player1 = COPGGen8EnvPlayer(player_configuration=player1_config, battle_format="gen8ou", log_level=40, team=teambuilder)
+player2 = COPGGen8EnvPlayer(player_configuration=player2_config, battle_format="gen8ou", log_level=40, team=teambuilder)
 
 async def test(superbatch):
     start = time.time()
