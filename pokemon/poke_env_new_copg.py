@@ -407,9 +407,17 @@ async def launch_battles(player, opponent):
     )
     await battles_coroutine
 
+def new_timestamp_str():
+    STR_LENGTH = 12
+
+    timestamp_str = str(time.time_ns())
+    n = len(timestamp_str)
+
+    return timestamp_str[n - STR_LENGTH:]
+
 teambuilder = ConstantTeambuilder(TEAM)
-player1_config = PlayerConfiguration(f'p1_{time.time_ns()}', None)  # Or password instead of None if playing online
-player2_config = PlayerConfiguration(f'p2_{time.time_ns()}', None)  # Or password instead of None if playing online
+player1_config = PlayerConfiguration(f'p1_{new_timestamp_str()}', None)  # Or password instead of None if playing online
+player2_config = PlayerConfiguration(f'p2_{new_timestamp_str()}', None)  # Or password instead of None if playing online
 
 player1 = COPGGen8EnvPlayer(player_configuration=player1_config, battle_format="gen8ou", log_level=40, team=teambuilder)
 player2 = COPGGen8EnvPlayer(player_configuration=player2_config, battle_format="gen8ou", log_level=40, team=teambuilder)
@@ -418,24 +426,28 @@ async def test(superbatch):
     start = time.time()
 
     random_player = RandomPlayer(
+        player_configuration=PlayerConfiguration(f'r_{new_timestamp_str()}', None),
         team=teambuilder,
         battle_format="gen8ou",
         log_level=40
     )
 
     copg_test_vs_random = COPGTestPlayer(
+        player_configuration=PlayerConfiguration(f'cr_{new_timestamp_str()}', None),
         team=teambuilder,
         battle_format="gen8ou",
         log_level=40
     )
 
     max_damage_player = MaxDamagePlayer(
+        player_configuration=PlayerConfiguration(f'md_{new_timestamp_str()}', None),
         team=teambuilder,
         battle_format="gen8ou",
         log_level=40
     )
 
     copg_test_vs_max_damage = COPGTestPlayer(
+        player_configuration=PlayerConfiguration(f'cmd_{new_timestamp_str()}', None),
         team=teambuilder,
         battle_format="gen8ou",
         log_level=40
