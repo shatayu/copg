@@ -54,17 +54,18 @@ import sys
 
 # accept command line arguments
 
-if len(sys.argv) != 4 and len(sys.argv) != 5:
-    print('Please provide batch_size, num_episode, num_superbatches, and a name (optional) in that order')
+if len(sys.argv) != 5 and len(sys.argv) != 6:
+    print('Please provide batch_size, num_episode, num_superbatches, actor lr, nd a name (optional) in that order')
     sys.exit()
 
 batch_size = int(sys.argv[1])
 num_episode = int(sys.argv[2])
 NUM_SUPERBATCHES = int(sys.argv[3])
+actor_lr = float(sys.argv[4])
 
 user_provided_name = datetime.now().strftime('%Y_%m_%d_%H_%M_%s') # default to timestamp
 if len(sys.argv) == 5:
-    user_provided_name = sys.argv[4]
+    user_provided_name = sys.argv[5]
 
 @lru_cache(None)
 def pokemon_to_int(mon):
@@ -76,7 +77,7 @@ p2 = policy(STATE_DIM, NUM_ACTIONS + 1)
 q = critic(STATE_DIM)
 
 # initialize CoPG
-optim_q = torch.optim.Adam(q.parameters(), lr=1e-2)
+optim_q = torch.optim.Adam(q.parameters(), lr=actor_lr)
 
 optim = CoPG(p1.parameters(), p2.parameters(), lr=1e-4)
 
