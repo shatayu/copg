@@ -42,6 +42,8 @@ from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_I
 from poke_env.player.player import Player
 from poke_env.player.random_player import RandomPlayer
 from poke_env.player_configuration import PlayerConfiguration
+from poke_env.player.battle_order import ForfeitBattleOrder
+
 
 from poke_env.data import POKEDEX, MOVES, NATURES
 from functools import lru_cache
@@ -139,8 +141,56 @@ def get_current_state(battle):
     return result
 
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
+    def _action_to_move(  # pyre-ignore
+        self, action, battle
+    ):
+        if action == -1:
+            return ForfeitBattleOrder()
+        elif (
+            action < 4
+            and action < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action])
+        elif (
+            not battle.force_switch
+            and battle.can_z_move
+            and battle.active_pokemon
+            and 0
+            <= action - 4
+            < len(battle.active_pokemon.available_z_moves)  # pyre-ignore
+        ):
+            return self.create_order(
+                battle.active_pokemon.available_z_moves[action - 4], z_move=True
+            )
+        elif (
+            battle.can_mega_evolve
+            and 0 <= action - 8 < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action - 8], mega=True)
+        elif (
+            battle.can_dynamax
+            and 0 <= action - 12 < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action - 12], dynamax=True)
+        elif 0 <= action - 16 < len(battle.available_switches):
+            return self.create_order(battle.available_switches[action - 16])
+        else:
+            return ForfeitBattleOrder()
+
     def embed_battle(self, battle):
         return get_current_state(battle)
+    
+    def compute_reward(self, battle):
+        return self.reward_computing_helper(
+            battle,
+            fainted_value=10,
+            hp_value=1,
+            victory_value=1000,
+        )
+
 
 class COPGTestPlayer(Player):
     def choose_move(self, battle):
@@ -208,9 +258,6 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
         timestamp = superbatch * n_battles + episode
         print(f'Superbatch {superbatch} Episode {episode}')
 
-        # with open(f'{experiment_name}_progress.txt', "a") as progress_file:
-        #     progress_file.write(f'Superbatch {superbatch} Episode {episode}\n')
-
         # gather states from batch_size batches
         for b in range(batch_size):
             done = False
@@ -227,7 +274,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
                     action_prob = p2(torch.FloatTensor(observation))
 
                 dist = Categorical(action_prob)
-                action = make_action_legal(dist.sample().item(), observation[1], observation[2])
+                action = dist.sample()
                 action_for_env = adjust_action_for_env(action.item())
 
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
