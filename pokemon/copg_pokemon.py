@@ -64,8 +64,10 @@ NUM_SUPERBATCHES = int(sys.argv[3])
 critic_lr = float(sys.argv[4])
 
 user_provided_name = datetime.now().strftime('%Y_%m_%d_%H_%M_%s') # default to timestamp
-if len(sys.argv) == 5:
+if len(sys.argv) == 6:
     user_provided_name = sys.argv[5]
+
+print(user_provided_name)
 
 @lru_cache(None)
 def pokemon_to_int(mon):
