@@ -472,36 +472,36 @@ player2_config = PlayerConfiguration(f'p2_{new_timestamp_str()}', None)  # Or pa
 player1 = COPGGen8EnvPlayer(player_configuration=player1_config, battle_format="gen8ou", log_level=40, team=teambuilder)
 player2 = COPGGen8EnvPlayer(player_configuration=player2_config, battle_format="gen8ou", log_level=40, team=teambuilder)
 
+random_player = RandomPlayer(
+    player_configuration=PlayerConfiguration(f'r_{new_timestamp_str()}', None),
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40
+)
+
+copg_test_vs_random = COPGTestPlayer(
+    player_configuration=PlayerConfiguration(f'cr_{new_timestamp_str()}', None),
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40
+)
+
+max_damage_player = MaxDamagePlayer(
+    player_configuration=PlayerConfiguration(f'md_{new_timestamp_str()}', None),
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40
+)
+
+copg_test_vs_max_damage = COPGTestPlayer(
+    player_configuration=PlayerConfiguration(f'cmd_{new_timestamp_str()}', None),
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40
+)
+
 async def test(superbatch):
     start = time.time()
-
-    random_player = RandomPlayer(
-        player_configuration=PlayerConfiguration(f'r_{new_timestamp_str()}', None),
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    copg_test_vs_random = COPGTestPlayer(
-        player_configuration=PlayerConfiguration(f'cr_{new_timestamp_str()}', None),
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    max_damage_player = MaxDamagePlayer(
-        player_configuration=PlayerConfiguration(f'md_{new_timestamp_str()}', None),
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    copg_test_vs_max_damage = COPGTestPlayer(
-        player_configuration=PlayerConfiguration(f'cmd_{new_timestamp_str()}', None),
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
 
     await copg_test_vs_random.battle_against(random_player, n_battles=100)
 
