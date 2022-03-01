@@ -131,7 +131,7 @@ class SharedInfo():
         return self.get_element(b1), self.get_element(b2)
 
     def get_turn_balanced_action_log_probs(self):
-        null_prob = torch.tensor(0)
+        null_prob = torch.tensor(1e-10)
         b1, b2 = self.balance_arrays(self.mat_action_log_probs[AGENT_1_ID],
                                     self.mat_action_log_probs[AGENT_2_ID],
                                     null_prob
