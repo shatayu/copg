@@ -4,7 +4,7 @@ AGENT_2_ID = 1
 # initialize policies
 NUM_ACTIONS = 6 # 4 moves + 2 legal switches
 NULL_ACTION_ID = NUM_ACTIONS
-STATE_DIM = 3
+STATE_DIM = 57
 
 
 NUM_MOVES = 4
