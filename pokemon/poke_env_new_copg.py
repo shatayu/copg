@@ -126,13 +126,11 @@ def get_opponent_team_encoding(opponent_team, agent_team):
 
 def get_current_state(battle):
     # remember to change STATE_DIM in pokemon_constants.py
-    # result = np.array(
-    #     [battle.turn, len(battle.available_moves), len(battle.available_switches)] + \
-    #         get_team_encoding(battle.team) + \
-    #         get_opponent_team_encoding(battle.opponent_team, battle.team)
-    #     )
-
-    result = np.array([battle.turn, len(battle.available_moves), len(battle.available_switches)])
+    result = np.array(
+        [battle.turn, len(battle.available_moves), len(battle.available_switches)] + \
+            get_team_encoding(battle.team) + \
+            get_opponent_team_encoding(battle.opponent_team, battle.team)
+        )
 
     return result
 
