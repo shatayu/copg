@@ -256,6 +256,8 @@ def adjust_action_for_env(action_number):
     else:
         return action_number
 
+
+state_dict = {}
 def env_algorithm(env, id, shared_info, superbatch, n_battles):
     for episode in range(n_battles):
         timestamp = superbatch * n_battles + episode
@@ -269,18 +271,27 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             turn = observation[0]
 
             while not done:
-                shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
-            
+                # debug code to print hashes for states
+                observation_str = f'{id}_{observation}'
+                if observation_str in state_dict:
+                    observation_hash = state_dict[observation_str]
+                else:
+                    observation_hash = f'{id}_{len(state_dict)}'
+                    state_dict[observation_str] = observation_hash
+
+                print(f'State (E{episode}, Agent{id}): {observation_hash}')
+
                 if id == AGENT_1_ID:
                     action_prob = p1(torch.FloatTensor(observation))
                 else:
                     action_prob = p2(torch.FloatTensor(observation))
 
+                print(f'Action probs (Agent {id}): {action_prob}')
                 dist = Categorical(action_prob)
                 action = dist.sample()
                 action_for_env = adjust_action_for_env(action.item())
 
-                shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
+                print(f'Action by {id} (E{episode}, Agent{id}): {action}')
 
                 observation, reward, done, _ = env.step(action_for_env)
 
@@ -290,7 +301,15 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
                 shared_info.mat_reward[id].append((torch.FloatTensor(np.array([reward])), b, turn))
                 shared_info.mat_reward_actual_number[id].append(reward)
 
-                shared_info.episode_log.append(f'Resulting state (E{episode}A{id}): {observation}')
+                # debug code to print hashes for states
+                observation_str = f'{id}_{observation}'
+                if observation_str in state_dict:
+                    observation_hash = state_dict[observation_str]
+                else:
+                    observation_hash = f'{id}_{len(state_dict)}'
+                    state_dict[observation_str] = observation_hash
+
+                print(f'Resulting state (E{episode}, Agent{id}): {observation_hash}')
 
                 if id == AGENT_1_ID:
                     shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
