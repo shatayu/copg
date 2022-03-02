@@ -1,57 +1,38 @@
 import asyncio
 import numpy as np
-from tabulate import tabulate
+import sys
+import os
+import time
+import torch
+from torch.distributions import Categorical
+from torch.utils.tensorboard import SummaryWriter
+
+from datetime import datetime
+from functools import lru_cache
+
 from threading import Thread
 
 from poke_env.utils import to_id_str
-from poke_env.player.env_player import (
-    Gen8EnvSinglePlayer,
-)
-
-from poke_env.player.utils import cross_evaluate
+from poke_env.player.env_player import Gen8EnvSinglePlayer
 from poke_env.teambuilder.constant_teambuilder import ConstantTeambuilder
-
-import torch
-import sys
-import os
-from datetime import datetime
+from poke_env.player.player import Player
+from poke_env.player.random_player import RandomPlayer
+from poke_env.data import POKEDEX
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 sys.path.insert(0, '..')
 from copg_optim import CoPG
-from torch.distributions import Categorical
-import numpy as np
-from rps.rps_game import rps_game
-from torch.utils.tensorboard import SummaryWriter
-
-from rps.network import policy1, policy2
-import time
+from copg_optim.critic_functions import critic_update, get_advantage
 
 from markov_soccer.networks import policy
 from markov_soccer.networks import critic
-
-from copg_optim.critic_functions import critic_update, get_advantage
-from markov_soccer.soccer_state import get_relative_state, get_two_state
-from collections import Counter
-import time
 
 from shared_info import SharedInfo
 from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID, TEAM, SWITCH_OFFSET, NUM_MOVES, STATE_DIM
 from player_classes import COPGGen8EnvPlayer, COPGTestPlayer, MaxDamagePlayer
 from utils import adjust_action_for_env
 
-from poke_env.player.player import Player
-from poke_env.player.random_player import RandomPlayer
-
-from poke_env.data import POKEDEX, MOVES, NATURES
-from functools import lru_cache
-
-import requests
-import sys
-
-
 # accept command line arguments
-
 if len(sys.argv) != 4 and len(sys.argv) != 5:
     print('Please provide batch_size, num_episode, num_superbatches, and a name (optional) in that order')
     sys.exit()
