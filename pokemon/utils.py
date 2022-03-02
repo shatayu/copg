@@ -1,6 +1,9 @@
 from poke_env.environment.status import Status
 import numpy as np
 
+from pokemon_constants import NUM_MOVES, SWITCH_OFFSET
+
+
 def one_hot_encode_status(status, fill_null_values):
     array = [0] * len(Status)
     statuses = [s for s in Status]
@@ -50,3 +53,9 @@ def get_current_state(battle):
         )
 
     return result
+
+def adjust_action_for_env(action_number):
+    if action_number >= NUM_MOVES:
+        return action_number + SWITCH_OFFSET
+    else:
+        return action_number
