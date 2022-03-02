@@ -128,6 +128,14 @@ class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
     def embed_battle(self, battle):
         return get_current_state(battle)
 
+    def compute_reward(self, battle):
+        return self.reward_computing_helper(
+            battle,
+            fainted_value=1e-3,
+            hp_value=1e-4,
+            victory_value=1,
+        )
+
 class COPGTestPlayer(Player):
     def choose_move(self, battle):
         observation = get_current_state(battle)
