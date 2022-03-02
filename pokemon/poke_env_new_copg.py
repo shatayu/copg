@@ -1,69 +1,49 @@
 import asyncio
 import numpy as np
-from tabulate import tabulate
+import sys
+import os
+import time
+import torch
+from torch.distributions import Categorical
+from torch.utils.tensorboard import SummaryWriter
+
+from datetime import datetime
+from functools import lru_cache
+
 from threading import Thread
 
 from poke_env.utils import to_id_str
-from poke_env.player.env_player import (
-    Gen8EnvSinglePlayer,
-)
-from poke_env.player.utils import cross_evaluate
+from poke_env.player.env_player import Gen8EnvSinglePlayer
 from poke_env.teambuilder.constant_teambuilder import ConstantTeambuilder
-
-import torch
-import sys
-import os
-from datetime import datetime
+from poke_env.player.player import Player
+from poke_env.player.random_player import RandomPlayer
+from poke_env.data import POKEDEX
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 sys.path.insert(0, '..')
 from copg_optim import CoPG
-from torch.distributions import Categorical
-import numpy as np
-from rps.rps_game import rps_game
-from torch.utils.tensorboard import SummaryWriter
-
-from rps.network import policy1, policy2
-import time
-
-from poke_env.environment.status import Status
+from copg_optim.critic_functions import critic_update, get_advantage
 
 from markov_soccer.networks import policy
 from markov_soccer.networks import critic
 
-from copg_optim.critic_functions import critic_update, get_advantage
-from markov_soccer.soccer_state import get_relative_state, get_two_state
-from collections import Counter
-import time
-
 from shared_info import SharedInfo
 from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID, TEAM, SWITCH_OFFSET, NUM_MOVES, STATE_DIM
-
-from poke_env.player.player import Player
-from poke_env.player.random_player import RandomPlayer
-
-from poke_env.data import POKEDEX, MOVES, NATURES
-from functools import lru_cache
-
-from poke_env.player.battle_order import ForfeitBattleOrder
-
-import requests
-import sys
-
+from player_classes import COPGGen8EnvPlayer, COPGTestPlayer, MaxDamagePlayer
+from utils import adjust_action_for_env
 
 # accept command line arguments
-
-if len(sys.argv) != 4 and len(sys.argv) != 5:
-    print('Please provide batch_size, num_episode, num_superbatches, and a name (optional) in that order')
+if len(sys.argv) not in [5, 6]:
+    print('Please provide batch_size, num_episode, num_superbatches, critic lr, and a name (optional) in that order')
     sys.exit()
 
 batch_size = int(sys.argv[1])
 num_episode = int(sys.argv[2])
 NUM_SUPERBATCHES = int(sys.argv[3])
+critic_lr = float(sys.argv[4])
 
-user_provided_name = datetime.now().strftime('%Y_%m_%d_%H_%M_%s') # default to timestamp
-if len(sys.argv) == 5:
-    user_provided_name = sys.argv[4]
+user_provided_name = sys.argv[5] if len(sys.argv) == 6 else \
+    datetime.now().strftime('%Y_%m_%d_%H_%M_%s')
 
 @lru_cache(None)
 def pokemon_to_int(mon):
@@ -71,162 +51,21 @@ def pokemon_to_int(mon):
 
 # initialize policies
 p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last action id
+p2 = policy(STATE_DIM, NUM_ACTIONS + 1)
 q = critic(STATE_DIM)
 
 # initialize CoPG
-optim_q = torch.optim.Adam(q.parameters(), lr=0.1e-3)
+optim_q = torch.optim.Adam(q.parameters(), lr=1e-4)
 
-optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-3)
+optim = CoPG(p1.parameters(),p2.parameters(), lr=critic_lr)
 
 folder_location = f'tensorboard/pokemon_{user_provided_name}/'
-experiment_name = f'observations'
+experiment_name = 'observations'
 directory = '../' + folder_location + '/' + experiment_name + 'model'
 
 if not os.path.exists(directory):
     os.makedirs(directory)
 writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
-
-def one_hot_encode_status(status, fill_null_values):
-    array = [0] * len(Status)
-    statuses = [s for s in Status]
-    
-    if status in statuses and not fill_null_values:
-        index = statuses.index(status)
-        array[index] = 1
-        
-    return array
-    
-def encode_pokemon(p, fill_null_values=False):
-    if fill_null_values:
-        return [0.0, 1.0] + one_hot_encode_status(None, fill_null_values)
-    else:
-        return [1 if p.active else 0, p.current_hp_fraction] + one_hot_encode_status(p.status, fill_null_values)
-
-def get_team_encoding(team):
-    pokemon_object_list = list(team.values())
-    pokemon_object_list.sort(key=lambda x: x.species)
-
-    return sum([encode_pokemon(p) for p in pokemon_object_list], [])
-
-# fills in unrevealed Pokemon from opponent with Pokemon from the agent's team
-def get_opponent_team_encoding(opponent_team, agent_team):
-    agent_pokemon_object_list = list(agent_team.values())
-    agent_pokemon_object_list.sort(key=lambda x: x.species)
-
-    opponent_pokemon_object_list = list(opponent_team.values())
-
-    opponent_pokemon_revealed_species = set([p.species for p in opponent_pokemon_object_list])
-    opponent_pokemon_full_team = []
-
-    for pa in agent_pokemon_object_list:
-        if pa.species in opponent_pokemon_revealed_species:
-            opponent_pokemon_full_team.append(next(po for po in opponent_pokemon_object_list if pa.species == po.species))
-        else:
-            opponent_pokemon_full_team.append(pa)
-    
-    return sum([encode_pokemon(p, True) for p in opponent_pokemon_full_team], []) 
-
-def get_current_state(battle):
-    # remember to change STATE_DIM in pokemon_constants.py
-    result = np.array(
-        [battle.turn, len(battle.available_moves), len(battle.available_switches)] + \
-            get_team_encoding(battle.team) + \
-            get_opponent_team_encoding(battle.opponent_team, battle.team)
-        )
-
-    return result
-
-class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
-    def _action_to_move(  # pyre-ignore
-        self, action, battle
-    ):
-        if action == -1:
-            return ForfeitBattleOrder()
-        elif (
-            action < 4
-            and action < len(battle.available_moves)
-            and not battle.force_switch
-        ):
-            return self.create_order(battle.available_moves[action])
-        elif (
-            not battle.force_switch
-            and battle.can_z_move
-            and battle.active_pokemon
-            and 0
-            <= action - 4
-            < len(battle.active_pokemon.available_z_moves)  # pyre-ignore
-        ):
-            return self.create_order(
-                battle.active_pokemon.available_z_moves[action - 4], z_move=True
-            )
-        elif (
-            battle.can_mega_evolve
-            and 0 <= action - 8 < len(battle.available_moves)
-            and not battle.force_switch
-        ):
-            return self.create_order(battle.available_moves[action - 8], mega=True)
-        elif (
-            battle.can_dynamax
-            and 0 <= action - 12 < len(battle.available_moves)
-            and not battle.force_switch
-        ):
-            return self.create_order(battle.available_moves[action - 12], dynamax=True)
-        elif 0 <= action - 16 < len(battle.available_switches):
-            return self.create_order(battle.available_switches[action - 16])
-        else:
-            return ForfeitBattleOrder()
-    
-    def embed_battle(self, battle):
-        return get_current_state(battle)
-
-    def compute_reward(self, battle):
-        return self.reward_computing_helper(
-            battle,
-            fainted_value=10,
-            hp_value=1,
-            victory_value=1000,
-        )
-
-class COPGTestPlayer(Player):
-    def choose_move(self, battle):
-        observation = get_current_state(battle)
-        
-        # If the player can attack, it will
-        action_prob = p1(torch.FloatTensor(observation))
-        dist = Categorical(action_prob)
-        action = dist.sample()
-        action_for_env = adjust_action_for_env(action.item())
-
-        if battle.available_moves and action_for_env < len(battle.available_moves):
-            # Finds the best move among available ones
-            best_move = battle.available_moves[action_for_env]
-
-            return self.create_order(best_move)
-
-        elif battle.available_switches and action_for_env >= 16 and action_for_env - 16 < len(battle.available_switches):
-            best_switch = battle.available_switches[action_for_env - 16]
-            return self.create_order(best_switch)
-        # If no attack is available, a random switch will be made
-        else:
-            return self.choose_random_move(battle)
-
-class MaxDamagePlayer(Player):
-    def choose_move(self, battle):
-        # If the player can attack, it will
-        if battle.available_moves:
-            # Finds the best move among available ones
-            best_move = max(battle.available_moves, key=lambda move: move.base_power)
-            return self.create_order(best_move)
-
-        # If no attack is available, a random switch will be made
-        else:
-            return self.choose_random_move(battle)
-
-def adjust_action_for_env(action_number):
-    if action_number >= NUM_MOVES:
-        return action_number + SWITCH_OFFSET
-    else:
-        return action_number
 
 def env_algorithm(env, id, shared_info, superbatch, n_battles):
     for episode in range(n_battles):
@@ -245,7 +84,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
 
             while not done:
                 shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
-                action_prob = p1(torch.FloatTensor(observation))
+                action_prob = p1(torch.FloatTensor(observation)) if id == AGENT_1_ID else p2(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
                 action = dist.sample()
                 action_for_env = adjust_action_for_env(action.item())
@@ -345,13 +184,12 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             ed_q_time = time.time()
 
             val1_p = advantage_mat1
-
             pi_a1_s = p1(torch.stack(mat_state1))
             dist_batch1 = Categorical(pi_a1_s)
             action_both = torch.stack(mat_action)
             log_probs1 = dist_batch1.log_prob(action_both[:,0])
 
-            pi_a2_s = p1(torch.stack(mat_state2))
+            pi_a2_s = p2(torch.stack(mat_state2))
             dist_batch2 = Categorical(pi_a2_s)
             log_probs2 = dist_batch2.log_prob(action_both[:,1])
 
@@ -376,7 +214,6 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             objective2 = s_log_probs1[1:s_log_probs1.size(0)]*log_probs2[1:log_probs2.size(0)]*(val1_p[0,1:val1_p.size(1)])
             ob2 = objective2.sum()/(objective2.size(0)-batch_size+1)
 
-
             objective3 = log_probs1[1:log_probs1.size(0)]*s_log_probs2[1:s_log_probs2.size(0)]*(val1_p[0,1:val1_p.size(1)])
             ob3 = objective3.sum()/(objective3.size(0)-batch_size+1)
 
@@ -396,6 +233,9 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             if episode%100==0:
                 torch.save(p1.state_dict(),
                         '../' + folder_location + experiment_name + 'model/agent1_' + str(
+                            timestamp) + ".pth")
+                torch.save(p2.state_dict(),
+                        '../' + folder_location + experiment_name + 'model/agent2_' + str(
                             timestamp) + ".pth")
                 torch.save(q.state_dict(),
                         '../' + folder_location + experiment_name + 'model/val_' + str(
@@ -428,32 +268,38 @@ teambuilder = ConstantTeambuilder(TEAM)
 player1 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 player2 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 
+random_player = RandomPlayer(
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
+copg_test_vs_random = COPGTestPlayer(
+    prob_dist=p1,
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
+max_damage_player = MaxDamagePlayer(
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
+copg_test_vs_max_damage = COPGTestPlayer(
+    prob_dist=p1,
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
 async def test(superbatch):
     start = time.time()
-
-    random_player = RandomPlayer(
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    copg_test_vs_random = COPGTestPlayer(
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    max_damage_player = MaxDamagePlayer(
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    copg_test_vs_max_damage = COPGTestPlayer(
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
 
     await copg_test_vs_random.battle_against(random_player, n_battles=100)
 
@@ -482,13 +328,6 @@ async def test(superbatch):
 
     writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
     writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
-
-    # with open(f'{experiment_name}_random.txt', "a") as results_file_random:
-    #     results_file_random.write(f'{wins_vs_random}\n')
-
-    # with open(f'{experiment_name}_max_damage.txt', "a") as results_file_max_damage:
-    #     results_file_max_damage.write(f'{wins_vs_max_damage}\n')
-
 
 for superbatch in range(NUM_SUPERBATCHES):
     player1._start_new_battle = True
