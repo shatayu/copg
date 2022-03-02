@@ -73,7 +73,7 @@ p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last act
 q = critic(STATE_DIM)
 
 # initialize CoPG
-optim_q = torch.optim.Adam(q.parameters(), lr=0.1e-3)
+optim_q = torch.optim.Adam(q.parameters(), lr=1e-3)
 
 optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-3)
 
