@@ -33,17 +33,17 @@ from player_classes import COPGGen8EnvPlayer, COPGTestPlayer, MaxDamagePlayer
 from utils import adjust_action_for_env
 
 # accept command line arguments
-if len(sys.argv) != 4 and len(sys.argv) != 5:
-    print('Please provide batch_size, num_episode, num_superbatches, and a name (optional) in that order')
+if len(sys.argv) not in [5, 6]:
+    print('Please provide batch_size, num_episode, num_superbatches, critic lr, and a name (optional) in that order')
     sys.exit()
 
 batch_size = int(sys.argv[1])
 num_episode = int(sys.argv[2])
 NUM_SUPERBATCHES = int(sys.argv[3])
+critic_lr = float(sys.argv[4])
 
-user_provided_name = datetime.now().strftime('%Y_%m_%d_%H_%M_%s') # default to timestamp
-if len(sys.argv) == 5:
-    user_provided_name = sys.argv[4]
+user_provided_name = sys.argv[5] if len(sys.argv) == 6 else \
+    datetime.now().strftime('%Y_%m_%d_%H_%M_%s')
 
 @lru_cache(None)
 def pokemon_to_int(mon):
@@ -54,12 +54,12 @@ p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last act
 q = critic(STATE_DIM)
 
 # initialize CoPG
-optim_q = torch.optim.Adam(q.parameters(), lr=1e-3)
+optim_q = torch.optim.Adam(q.parameters(), lr=1e-4)
 
-optim = CoPG(p1.parameters(),p1.parameters(), lr=1e-3)
+optim = CoPG(p1.parameters(),p1.parameters(), lr=critic_lr)
 
 folder_location = f'tensorboard/pokemon_{user_provided_name}/'
-experiment_name = f'observations'
+experiment_name = 'observations'
 directory = '../' + folder_location + '/' + experiment_name + 'model'
 
 if not os.path.exists(directory):
