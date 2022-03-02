@@ -15,6 +15,8 @@ import sys
 import os
 from datetime import datetime
 
+from poke_env.player.battle_order import ForfeitBattleOrder
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 sys.path.insert(0, '..')
 from copg_optim import CoPG
@@ -135,6 +137,45 @@ def get_current_state(battle):
     return result
 
 class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
+    def _action_to_move(  # pyre-ignore
+        self, action, battle
+    ):
+        if action == -1:
+            return ForfeitBattleOrder()
+        elif (
+            action < 4
+            and action < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action])
+        elif (
+            not battle.force_switch
+            and battle.can_z_move
+            and battle.active_pokemon
+            and 0
+            <= action - 4
+            < len(battle.active_pokemon.available_z_moves)  # pyre-ignore
+        ):
+            return self.create_order(
+                battle.active_pokemon.available_z_moves[action - 4], z_move=True
+            )
+        elif (
+            battle.can_mega_evolve
+            and 0 <= action - 8 < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action - 8], mega=True)
+        elif (
+            battle.can_dynamax
+            and 0 <= action - 12 < len(battle.available_moves)
+            and not battle.force_switch
+        ):
+            return self.create_order(battle.available_moves[action - 12], dynamax=True)
+        elif 0 <= action - 16 < len(battle.available_switches):
+            return self.create_order(battle.available_switches[action - 16])
+        else:
+            return ForfeitBattleOrder()
+
     def embed_battle(self, battle):
         return get_current_state(battle)
 
@@ -145,7 +186,7 @@ class COPGTestPlayer(Player):
         # If the player can attack, it will
         action_prob = p1(torch.FloatTensor(observation))
         dist = Categorical(action_prob)
-        action = make_action_legal(dist.sample().item(), observation[1], observation[2])
+        action = dist.sample()
         action_for_env = adjust_action_for_env(action.item())
 
         if battle.available_moves and action_for_env < len(battle.available_moves):
@@ -173,26 +214,6 @@ class MaxDamagePlayer(Player):
         else:
             return self.choose_random_move(battle)
 
-def make_action_legal(action_number, num_available_moves, num_available_switches):
-    if action_number == NULL_ACTION_ID:
-        # sampled null_action; give it any random action
-        legal_action = np.random.randint(0, NUM_ACTIONS)
-    elif num_available_moves == 0 and action_number < NUM_MOVES:
-        # wants to use a move but no moves, adjust to random switch
-        legal_action = np.random.randint(NUM_MOVES, NUM_MOVES + num_available_switches) if num_available_switches > 0 else 0
-    elif num_available_switches == 0 and action_number >= NUM_MOVES:
-        legal_action = np.random.randint(0, num_available_moves) if num_available_moves > 0 else 0
-    elif action_number < NUM_MOVES and action_number >= num_available_moves:
-        # wants to use a move, adjust to a random move
-        legal_action = np.random.randint(0, num_available_moves)
-    elif action_number >= NUM_MOVES and action_number - NUM_MOVES > num_available_switches:
-        # wants to switch, give it a random switch
-        legal_action = np.random.randint(NUM_MOVES, NUM_MOVES + num_available_switches)
-    else:
-        legal_action = action_number
-
-    return torch.tensor(legal_action)
-
 def adjust_action_for_env(action_number):
     if action_number >= NUM_MOVES:
         return action_number + SWITCH_OFFSET
@@ -218,7 +239,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
                 shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
                 action_prob = p1(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
-                action = make_action_legal(dist.sample().item(), observation[1], observation[2])
+                action = dist.sample()
                 action_for_env = adjust_action_for_env(action.item())
 
                 shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
