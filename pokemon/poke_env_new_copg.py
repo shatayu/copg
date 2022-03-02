@@ -51,12 +51,13 @@ def pokemon_to_int(mon):
 
 # initialize policies
 p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last action id
+p2 = policy(STATE_DIM, NUM_ACTIONS + 1)
 q = critic(STATE_DIM)
 
 # initialize CoPG
 optim_q = torch.optim.Adam(q.parameters(), lr=1e-4)
 
-optim = CoPG(p1.parameters(),p1.parameters(), lr=critic_lr)
+optim = CoPG(p1.parameters(),p2.parameters(), lr=critic_lr)
 
 folder_location = f'tensorboard/pokemon_{user_provided_name}/'
 experiment_name = 'observations'
@@ -83,7 +84,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
 
             while not done:
                 shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
-                action_prob = p1(torch.FloatTensor(observation))
+                action_prob = p1(torch.FloatTensor(observation)) if id == AGENT_1_ID else p2(torch.FloatTensor(observation))
                 dist = Categorical(action_prob)
                 action = dist.sample()
                 action_for_env = adjust_action_for_env(action.item())
@@ -183,13 +184,12 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             ed_q_time = time.time()
 
             val1_p = advantage_mat1
-
             pi_a1_s = p1(torch.stack(mat_state1))
             dist_batch1 = Categorical(pi_a1_s)
             action_both = torch.stack(mat_action)
             log_probs1 = dist_batch1.log_prob(action_both[:,0])
 
-            pi_a2_s = p1(torch.stack(mat_state2))
+            pi_a2_s = p2(torch.stack(mat_state2))
             dist_batch2 = Categorical(pi_a2_s)
             log_probs2 = dist_batch2.log_prob(action_both[:,1])
 
@@ -214,7 +214,6 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             objective2 = s_log_probs1[1:s_log_probs1.size(0)]*log_probs2[1:log_probs2.size(0)]*(val1_p[0,1:val1_p.size(1)])
             ob2 = objective2.sum()/(objective2.size(0)-batch_size+1)
 
-
             objective3 = log_probs1[1:log_probs1.size(0)]*s_log_probs2[1:s_log_probs2.size(0)]*(val1_p[0,1:val1_p.size(1)])
             ob3 = objective3.sum()/(objective3.size(0)-batch_size+1)
 
@@ -234,6 +233,9 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             if episode%100==0:
                 torch.save(p1.state_dict(),
                         '../' + folder_location + experiment_name + 'model/agent1_' + str(
+                            timestamp) + ".pth")
+                torch.save(p2.state_dict(),
+                        '../' + folder_location + experiment_name + 'model/agent2_' + str(
                             timestamp) + ".pth")
                 torch.save(q.state_dict(),
                         '../' + folder_location + experiment_name + 'model/val_' + str(
