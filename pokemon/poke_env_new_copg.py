@@ -268,34 +268,38 @@ teambuilder = ConstantTeambuilder(TEAM)
 player1 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 player2 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
 
+random_player = RandomPlayer(
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
+copg_test_vs_random = COPGTestPlayer(
+    prob_dist=p1,
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
+max_damage_player = MaxDamagePlayer(
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
+copg_test_vs_max_damage = COPGTestPlayer(
+    prob_dist=p1,
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
 async def test(superbatch):
     start = time.time()
-
-    random_player = RandomPlayer(
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    copg_test_vs_random = COPGTestPlayer(
-        prob_dist=p1,
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    max_damage_player = MaxDamagePlayer(
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
-
-    copg_test_vs_max_damage = COPGTestPlayer(
-        prob_dist=p1,
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40
-    )
 
     await copg_test_vs_random.battle_against(random_player, n_battles=100)
 
@@ -324,13 +328,6 @@ async def test(superbatch):
 
     writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
     writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
-
-    # with open(f'{experiment_name}_random.txt', "a") as results_file_random:
-    #     results_file_random.write(f'{wins_vs_random}\n')
-
-    # with open(f'{experiment_name}_max_damage.txt', "a") as results_file_max_damage:
-    #     results_file_max_damage.write(f'{wins_vs_max_damage}\n')
-
 
 for superbatch in range(NUM_SUPERBATCHES):
     player1._start_new_battle = True
