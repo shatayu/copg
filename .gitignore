@@ -112,3 +112,4 @@ _build
 # videos
 .mp4
 pokemon/pokemon-showdown
+.vscode/settings.json
