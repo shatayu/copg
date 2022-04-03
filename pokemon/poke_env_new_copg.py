@@ -54,12 +54,12 @@ p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last act
 p2 = policy(STATE_DIM, NUM_ACTIONS + 1)
 q = critic(STATE_DIM)
 
-p1.load_state_dict(
-    torch.load("../tensorboard/pokemon_critic_lr_1e2_mar2/observationsmodel/agent1_4950.pth"))
-p2.load_state_dict(
-    torch.load("../tensorboard/pokemon_critic_lr_1e2_mar2/observationsmodel/agent2_4950.pth"))
-q.load_state_dict(
-    torch.load("../tensorboard/pokemon_critic_lr_1e2_mar2/observationsmodel/val_4950.pth"))
+# p1.load_state_dict(
+#     torch.load("../tensorboard/pokemon_critic_lr_1e2_mar2/observationsmodel/agent1_4950.pth"))
+# p2.load_state_dict(
+#     torch.load("../tensorboard/pokemon_critic_lr_1e2_mar2/observationsmodel/agent2_4950.pth"))
+# q.load_state_dict(
+#     torch.load("../tensorboard/pokemon_critic_lr_1e2_mar2/observationsmodel/val_4950.pth"))
 
 
 # initialize CoPG
