@@ -9,6 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from datetime import datetime
 from functools import lru_cache
+from monsterurl import get_monster
 
 from threading import Thread
 
@@ -43,7 +44,7 @@ NUM_SUPERBATCHES = int(sys.argv[3])
 critic_lr = float(sys.argv[4])
 
 user_provided_name = sys.argv[5] if len(sys.argv) == 6 else \
-    datetime.now().strftime('%Y_%m_%d_%H_%M_%s')
+    f"{get_monster()}_{datetime.now().strftime('%m_%d_%H_%M_%S')}"
 
 @lru_cache(None)
 def pokemon_to_int(mon):
@@ -67,11 +68,13 @@ optim_q = torch.optim.Adam(q.parameters(), lr=1e-4)
 
 optim = CoPG(p1.parameters(),p2.parameters(), lr=critic_lr)
 
-folder_location = f'tensorboard/pokemon_{user_provided_name}/'
-experiment_name = 'observations'
-directory = '../' + folder_location + '/' + experiment_name + 'model'
+folder_location = 'tensorboard/pokemon/'
+experiment_name = f'{user_provided_name}/'
+directory = '../' + folder_location + experiment_name + 'model'
+print(directory)
 
 if not os.path.exists(directory):
+    print('Making directory')
     os.makedirs(directory)
 writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 
@@ -360,3 +363,5 @@ for superbatch in range(NUM_SUPERBATCHES):
 
     # test
     loop.run_until_complete(test(superbatch))
+
+print(f'Results written to {directory}.')

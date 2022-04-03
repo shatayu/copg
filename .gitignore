@@ -1,4 +1,5 @@
-ome data files
+# Some data files
+tensorboard/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
