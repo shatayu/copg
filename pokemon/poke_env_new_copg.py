@@ -165,7 +165,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             
             # compute returns
             returns1 = torch.cat(returns_np1)
-            returns_1_number = torch.sum(returns1).item()
+            returns_1_number = torch.mean(returns1).item()
             writer.add_scalar('Returns/agent_1', returns_1_number, timestamp)
             advantage_mat1 = returns1 - val1.transpose(0,1)
             
@@ -312,33 +312,31 @@ copg_test_vs_max_damage = COPGTestPlayer(
 async def test(superbatch):
     start = time.time()
 
-    await copg_test_vs_random.battle_against(random_player, n_battles=100)
+    n_battles = 100
+
+    await copg_test_vs_random.battle_against(random_player, n_battles=n_battles)
 
     wins_vs_random = copg_test_vs_random.n_won_battles
     time_vs_random = time.time() - start
 
-    print(
-        "COPG won %d / 100 battles vs. random [this took %f seconds]"
-        % (
-            wins_vs_random, time_vs_random
-        )
-    )
+    print(f'COPG won {wins_vs_random}% of its battles vs. the random agent ({np.format_float_positional(time_vs_random, 2)} seconds)')
 
     start = time.time()
 
-    await copg_test_vs_max_damage.battle_against(max_damage_player, n_battles=100)
+    await copg_test_vs_max_damage.battle_against(max_damage_player, n_battles=n_battles)
     wins_vs_max_damage = copg_test_vs_max_damage.n_won_battles
     time_vs_max_damage = time.time() - start
 
-    print(
-        "COPG won %d / 100 battles vs. max_damage [this took %f seconds]"
-        % (
-            wins_vs_max_damage, time_vs_max_damage
-        )
-    )
+    print(f'COPG won {wins_vs_max_damage}% of its battles vs. the max damage agent ({np.format_float_positional(time_vs_max_damage, 2)} seconds)')
 
     writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
     writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
+
+    random_player.reset_battles()
+    copg_test_vs_random.reset_battles()
+    max_damage_player.reset_battles()
+    copg_test_vs_max_damage.reset_battles()
+
 
 for superbatch in range(NUM_SUPERBATCHES):
     player1._start_new_battle = True
