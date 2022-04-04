@@ -12,6 +12,7 @@ from functools import lru_cache
 from monsterurl import get_monster
 
 from threading import Thread
+from copy import deepcopy
 
 from poke_env.utils import to_id_str
 from poke_env.player.env_player import Gen8EnvSinglePlayer
@@ -32,6 +33,10 @@ from shared_info import SharedInfo
 from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID, TEAM, SWITCH_OFFSET, NUM_MOVES, STATE_DIM
 from player_classes import COPGGen8EnvPlayer, COPGTestPlayer, MaxDamagePlayer
 from utils import adjust_action_for_env
+
+total_script_start_time = time.time()
+total_train_time = 0
+total_test_time = 0
 
 # accept command line arguments
 if len(sys.argv) not in [5, 6]:
@@ -54,6 +59,8 @@ def pokemon_to_int(mon):
 p1 = policy(STATE_DIM, NUM_ACTIONS + 1) # support null action being the last action id
 p2 = policy(STATE_DIM, NUM_ACTIONS + 1)
 q = critic(STATE_DIM)
+
+unused_policy = deepcopy(p1)
 
 # p1.load_state_dict(
 #     torch.load("../tensorboard/pokemon_critic_lr_1e2_mar2/observationsmodel/agent1_4950.pth"))
@@ -78,183 +85,189 @@ if not os.path.exists(directory):
     os.makedirs(directory)
 writer = SummaryWriter('../' + folder_location + experiment_name + 'data')
 
-def env_algorithm(env, id, shared_info, superbatch, n_battles):
-    for episode in range(n_battles):
-        timestamp = superbatch * n_battles + episode
-        print(f'Superbatch {superbatch} Episode {episode}')
+distributions_after_each_superbatch = []
 
-        # with open(f'{experiment_name}_progress.txt', "a") as progress_file:
-        #     progress_file.write(f'Superbatch {superbatch} Episode {episode}\n')
+def env_algorithm(env, id, shared_info, n_battles):
+    for superbatch in range(NUM_SUPERBATCHES):
+        for episode in range(n_battles):
+            timestamp = superbatch * n_battles + episode
+            print(f'Superbatch {superbatch} Episode {episode}')
 
-        # gather states from batch_size batches
-        for b in range(batch_size):
-            done = False
-            observation = env.reset()
+            # with open(f'{experiment_name}_progress.txt', "a") as progress_file:
+            #     progress_file.write(f'Superbatch {superbatch} Episode {episode}\n')
 
-            turn = observation[0]
-
-            while not done:
-                shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
-                action_prob = p1(torch.FloatTensor(observation)) if id == AGENT_1_ID else p2(torch.FloatTensor(observation))
-                dist = Categorical(action_prob)
-                action = dist.sample()
-                action_for_env = adjust_action_for_env(action.item())
-
-                shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
-
-                observation, reward, done, _ = env.step(action_for_env)
-
-                shared_info.mat_state[id].append((torch.FloatTensor(observation), b, turn))
-                shared_info.mat_action[id].append((action, b, turn))
-                shared_info.mat_action_log_probs[id].append((dist.log_prob(action), b, turn))
-                shared_info.mat_reward[id].append((torch.FloatTensor(np.array([reward])), b, turn))
-                shared_info.mat_reward_actual_number[id].append(reward)
-
-                shared_info.episode_log.append(f'Resulting state (E{episode}A{id}): {observation}')
-
-                if id == AGENT_1_ID:
-                    shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
+            # gather states from batch_size batches
+            for b in range(batch_size):
+                done = False
+                observation = env.reset()
 
                 turn = observation[0]
 
-            shared_info.num_completed_battles[id] += 1
+                while not done:
+                    shared_info.episode_log.append(f'State (E{episode}A{id}): {observation}')
+                    action_prob = p1(torch.FloatTensor(observation)) if id == AGENT_1_ID else p2(torch.FloatTensor(observation))
+                    dist = Categorical(action_prob)
+                    action = dist.sample()
+                    action_for_env = adjust_action_for_env(action.item())
 
-            if id == AGENT_1_ID:
-                shared_info.mat_num_turns.append(int(turn))
+                    shared_info.episode_log.append(f'Action by {id} (E{episode}A{id}): {action}')
 
-        # battles are multithreaded so one agent may finish a battle slightly earlier than the second;
-        # the code below will run only when the second agent is fully caught up with the first
-        # after all battles in the batch are complete
-        if shared_info.num_battles_equal():         
-            # log trajectory
+                    observation, reward, done, _ = env.step(action_for_env)
 
-            # print(f'num_turns_array = {shared_info.mat_num_turns}')
-            # print(f'trajectory length = {np.mean(shared_info.mat_num_turns)}')
-            writer.add_scalar('trajectory_length', np.mean(shared_info.mat_num_turns), timestamp)
+                    shared_info.mat_state[id].append((torch.FloatTensor(observation), b, turn))
+                    shared_info.mat_action[id].append((action, b, turn))
+                    shared_info.mat_action_log_probs[id].append((dist.log_prob(action), b, turn))
+                    shared_info.mat_reward[id].append((torch.FloatTensor(np.array([reward])), b, turn))
+                    shared_info.mat_reward_actual_number[id].append(reward)
 
-            # log rewards
-            # print(f'agent 1 reward = {np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID])}')
-            # print(f'agent 2 reward = {np.mean(shared_info.mat_reward_actual_number[AGENT_2_ID])}')
-            # print(np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID]))
-            writer.add_scalar('agent_1_reward', np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID]), timestamp)
-            writer.add_scalar('agent_2_reward', np.mean(shared_info.mat_reward_actual_number[AGENT_2_ID]), timestamp)
+                    shared_info.episode_log.append(f'Resulting state (E{episode}A{id}): {observation}')
 
-            mat_state1, mat_state2 = shared_info.get_turn_balanced_states()
+                    if id == AGENT_1_ID:
+                        shared_info.mat_done.append(torch.FloatTensor([1 - int(done)]))
 
-            mat_reward1, mat_reward2 = shared_info.get_turn_balanced_rewards()
+                    turn = observation[0]
 
-            if len(mat_state1) == 0 or len(mat_state2) == 0:
-                empty_array = 1 if len(mat_state1) == 0 else 2
-                print(f'Dumping episode log because mat_state{empty_array} is empty')
-                print(shared_info.episode_log)
+                shared_info.num_completed_battles[id] += 1
 
-            mat_done = shared_info.get_turn_balanced_done()
+                if id == AGENT_1_ID:
+                    shared_info.mat_num_turns.append(int(turn))
 
-            mat_action1, mat_action2 = shared_info.get_turn_balanced_actions()
-            mat_action1_log_probs, mat_action2_log_probs = shared_info.get_turn_balanced_action_log_probs()
+            # battles are multithreaded so one agent may finish a battle slightly earlier than the second;
+            # the code below will run only when the second agent is fully caught up with the first
+            # after all battles in the batch are complete
+            if shared_info.num_battles_equal():         
+                # log trajectory
 
-            assert len(mat_action1) == len(mat_action2)
-            mat_action = list(zip(mat_action1, mat_action2))
-            mat_action = list(map(lambda x: torch.FloatTensor(np.array(list(x))), mat_action))
+                # print(f'num_turns_array = {shared_info.mat_num_turns}')
+                # print(f'trajectory length = {np.mean(shared_info.mat_num_turns)}')
+                writer.add_scalar('trajectory_length', np.mean(shared_info.mat_num_turns), timestamp)
 
-            val1 = q(torch.stack(mat_state1))
-            val1 = val1.detach()
-            next_value = 0  # because currently we end ony when its done which is equivalent to no next state
+                # log rewards
+                # print(f'agent 1 reward = {np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID])}')
+                # print(f'agent 2 reward = {np.mean(shared_info.mat_reward_actual_number[AGENT_2_ID])}')
+                # print(np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID]))
+                writer.add_scalar('agent_1_reward', np.mean(shared_info.mat_reward_actual_number[AGENT_1_ID]), timestamp)
+                writer.add_scalar('agent_2_reward', np.mean(shared_info.mat_reward_actual_number[AGENT_2_ID]), timestamp)
 
-            returns_np1 = get_advantage(next_value, torch.stack(mat_reward1), val1, torch.stack(mat_done), gamma=0.99, tau=0.95)
-            
-            # compute returns
-            returns1 = torch.cat(returns_np1)
-            returns_1_number = torch.mean(returns1).item()
-            writer.add_scalar('Returns/agent_1', returns_1_number, timestamp)
-            advantage_mat1 = returns1 - val1.transpose(0,1)
-            
-            # compute loss for actor1
-            actor1_loss = (-torch.Tensor(mat_action1_log_probs) * advantage_mat1)[0]
-            total_actor1_loss = torch.sum(actor1_loss).item()
-            writer.add_scalar('Loss/actor1', total_actor1_loss, timestamp)
+                mat_state1, mat_state2 = shared_info.get_turn_balanced_states()
 
-            val2 = q(torch.stack(mat_state2))
-            val2 = val2.detach()
-            next_value = 0  # because currently we end ony when its done which is equivalent to no next state
-            returns_np2 = get_advantage(next_value, torch.stack(mat_reward2), val2, torch.stack(mat_done), gamma=0.99, tau=0.95)
-            
-            # compute and log returns for agent 2
-            returns2 = torch.cat(returns_np2)
-            returns_2_number = torch.mean(returns2).item()
-            writer.add_scalar('Returns/agent_2', returns_2_number, timestamp)
-            advantage_mat2 = returns2 - val2.transpose(0,1)
+                mat_reward1, mat_reward2 = shared_info.get_turn_balanced_rewards()
 
-            # compute loss for actor2
-            actor2_loss = (-torch.Tensor(mat_action2_log_probs) * advantage_mat2)[0]
-            total_actor2_loss = torch.sum(actor2_loss).item()
-            writer.add_scalar('Loss/actor2', total_actor2_loss, timestamp)
+                if len(mat_state1) == 0 or len(mat_state2) == 0:
+                    empty_array = 1 if len(mat_state1) == 0 else 2
+                    print(f'Dumping episode log because mat_state{empty_array} is empty')
+                    print(shared_info.episode_log)
 
-            for loss_critic, gradient_norm in critic_update(torch.cat([torch.stack(mat_state1),torch.stack(mat_state2)]), torch.cat([returns1,returns2]).view(-1,1), q, optim_q):
-                writer.add_scalar('Loss/critic', loss_critic, timestamp)
-            ed_q_time = time.time()
+                mat_done = shared_info.get_turn_balanced_done()
 
-            val1_p = advantage_mat1
-            pi_a1_s = p1(torch.stack(mat_state1))
-            dist_batch1 = Categorical(pi_a1_s)
-            action_both = torch.stack(mat_action)
-            log_probs1 = dist_batch1.log_prob(action_both[:,0])
+                mat_action1, mat_action2 = shared_info.get_turn_balanced_actions()
+                mat_action1_log_probs, mat_action2_log_probs = shared_info.get_turn_balanced_action_log_probs()
 
-            pi_a2_s = p2(torch.stack(mat_state2))
-            dist_batch2 = Categorical(pi_a2_s)
-            log_probs2 = dist_batch2.log_prob(action_both[:,1])
+                assert len(mat_action1) == len(mat_action2)
+                mat_action = list(zip(mat_action1, mat_action2))
+                mat_action = list(map(lambda x: torch.FloatTensor(np.array(list(x))), mat_action))
 
-            objective = log_probs1*log_probs2*(val1_p)
-            if objective.size(0)!=1:
-                raise 'error'
+                val1 = q(torch.stack(mat_state1))
+                val1 = val1.detach()
+                next_value = 0  # because currently we end ony when its done which is equivalent to no next state
 
-            ob = objective.mean()
+                returns_np1 = get_advantage(next_value, torch.stack(mat_reward1), val1, torch.stack(mat_done), gamma=0.99, tau=0.95)
+                
+                # compute returns
+                returns1 = torch.cat(returns_np1)
+                returns_1_number = torch.mean(returns1).item()
+                writer.add_scalar('Returns/agent_1', returns_1_number, timestamp)
+                advantage_mat1 = returns1 - val1.transpose(0,1)
+                
+                # compute loss for actor1
+                actor1_loss = (-torch.Tensor(mat_action1_log_probs) * advantage_mat1)[0]
+                total_actor1_loss = torch.sum(actor1_loss).item()
+                writer.add_scalar('Loss/actor1', total_actor1_loss, timestamp)
 
-            s_log_probs1 = log_probs1[0:log_probs1.size(0)].clone() # otherwise it doesn't change values
-            s_log_probs2 = log_probs2[0:log_probs2.size(0)].clone()
+                val2 = q(torch.stack(mat_state2))
+                val2 = val2.detach()
+                next_value = 0  # because currently we end ony when its done which is equivalent to no next state
+                returns_np2 = get_advantage(next_value, torch.stack(mat_reward2), val2, torch.stack(mat_done), gamma=0.99, tau=0.95)
+                
+                # compute and log returns for agent 2
+                returns2 = torch.cat(returns_np2)
+                returns_2_number = torch.mean(returns2).item()
+                writer.add_scalar('Returns/agent_2', returns_2_number, timestamp)
+                advantage_mat2 = returns2 - val2.transpose(0,1)
 
-            mask = torch.stack(mat_done)
+                # compute loss for actor2
+                actor2_loss = (-torch.Tensor(mat_action2_log_probs) * advantage_mat2)[0]
+                total_actor2_loss = torch.sum(actor2_loss).item()
+                writer.add_scalar('Loss/actor2', total_actor2_loss, timestamp)
 
-            s_log_probs1[0] = 0
-            s_log_probs2[0] = 0
+                for loss_critic, gradient_norm in critic_update(torch.cat([torch.stack(mat_state1),torch.stack(mat_state2)]), torch.cat([returns1,returns2]).view(-1,1), q, optim_q):
+                    writer.add_scalar('Loss/critic', loss_critic, timestamp)
+                ed_q_time = time.time()
 
-            for i in range(1,log_probs1.size(0)):
-                s_log_probs1[i] = torch.add(s_log_probs1[i - 1], log_probs1[i-1])*mask[i-1]
-                s_log_probs2[i] = torch.add(s_log_probs2[i - 1], log_probs2[i-1])*mask[i-1]
+                val1_p = advantage_mat1
+                pi_a1_s = p1(torch.stack(mat_state1))
+                dist_batch1 = Categorical(pi_a1_s)
+                action_both = torch.stack(mat_action)
+                log_probs1 = dist_batch1.log_prob(action_both[:,0])
 
-            objective2 = s_log_probs1[1:s_log_probs1.size(0)]*log_probs2[1:log_probs2.size(0)]*(val1_p[0,1:val1_p.size(1)])
-            ob2 = objective2.sum()/(objective2.size(0)-batch_size+1)
+                pi_a2_s = p2(torch.stack(mat_state2))
+                dist_batch2 = Categorical(pi_a2_s)
+                log_probs2 = dist_batch2.log_prob(action_both[:,1])
 
-            objective3 = log_probs1[1:log_probs1.size(0)]*s_log_probs2[1:s_log_probs2.size(0)]*(val1_p[0,1:val1_p.size(1)])
-            ob3 = objective3.sum()/(objective3.size(0)-batch_size+1)
+                objective = log_probs1*log_probs2*(val1_p)
+                if objective.size(0)!=1:
+                    raise 'error'
 
-            lp1 = log_probs1*val1_p
-            lp1=lp1.mean()
-            lp2 = log_probs2*val1_p
-            lp2=lp2.mean()
-            optim.zero_grad()
-            optim.step(ob + ob2 + ob3, lp1,lp2)
-            ed_time = time.time()
+                ob = objective.mean()
 
-            writer.add_scalar('Entropy/agent1', dist_batch1.entropy().mean().detach(), timestamp)
-            writer.add_scalar('Entropy/agent2', dist_batch2.entropy().mean().detach(), timestamp)
-            
-            shared_info.reset()
+                s_log_probs1 = log_probs1[0:log_probs1.size(0)].clone() # otherwise it doesn't change values
+                s_log_probs2 = log_probs2[0:log_probs2.size(0)].clone()
 
-            if episode%100==0:
-                torch.save(p1.state_dict(),
-                        '../' + folder_location + experiment_name + 'model/agent1_' + str(
-                            timestamp) + ".pth")
-                torch.save(p2.state_dict(),
-                        '../' + folder_location + experiment_name + 'model/agent2_' + str(
-                            timestamp) + ".pth")
-                torch.save(q.state_dict(),
-                        '../' + folder_location + experiment_name + 'model/val_' + str(
-                            timestamp) + ".pth")
+                mask = torch.stack(mat_done)
+
+                s_log_probs1[0] = 0
+                s_log_probs2[0] = 0
+
+                for i in range(1,log_probs1.size(0)):
+                    s_log_probs1[i] = torch.add(s_log_probs1[i - 1], log_probs1[i-1])*mask[i-1]
+                    s_log_probs2[i] = torch.add(s_log_probs2[i - 1], log_probs2[i-1])*mask[i-1]
+
+                objective2 = s_log_probs1[1:s_log_probs1.size(0)]*log_probs2[1:log_probs2.size(0)]*(val1_p[0,1:val1_p.size(1)])
+                ob2 = objective2.sum()/(objective2.size(0)-batch_size+1)
+
+                objective3 = log_probs1[1:log_probs1.size(0)]*s_log_probs2[1:s_log_probs2.size(0)]*(val1_p[0,1:val1_p.size(1)])
+                ob3 = objective3.sum()/(objective3.size(0)-batch_size+1)
+
+                lp1 = log_probs1*val1_p
+                lp1=lp1.mean()
+                lp2 = log_probs2*val1_p
+                lp2=lp2.mean()
+                optim.zero_grad()
+                optim.step(ob + ob2 + ob3, lp1,lp2)
+                ed_time = time.time()
+
+                writer.add_scalar('Entropy/agent1', dist_batch1.entropy().mean().detach(), timestamp)
+                writer.add_scalar('Entropy/agent2', dist_batch2.entropy().mean().detach(), timestamp)
+                
+                shared_info.reset()
+
+                if episode%100==0:
+                    torch.save(p1.state_dict(),
+                            '../' + folder_location + experiment_name + 'model/agent1_' + str(
+                                timestamp) + ".pth")
+                    torch.save(p2.state_dict(),
+                            '../' + folder_location + experiment_name + 'model/agent2_' + str(
+                                timestamp) + ".pth")
+                    torch.save(q.state_dict(),
+                            '../' + folder_location + experiment_name + 'model/val_' + str(
+                                timestamp) + ".pth")
+    
+    # test
+    distributions_after_each_superbatch.append(deepcopy(p1))
 
 # boilerplate code to run battles
-def env_algorithm_wrapper(player, id, shared_info, superbatch, kwargs):
-    env_algorithm(player, id, shared_info, superbatch, **kwargs)
+def env_algorithm_wrapper(player, id, shared_info, kwargs):
+    env_algorithm(player, id, shared_info, **kwargs)
 
     player._start_new_battle = False
     while True:
@@ -286,14 +299,6 @@ random_player = RandomPlayer(
     max_concurrent_battles=100
 )
 
-copg_test_vs_random = COPGTestPlayer(
-    prob_dist=p1,
-    team=teambuilder,
-    battle_format="gen8ou",
-    log_level=40,
-    max_concurrent_battles=100
-)
-
 max_damage_player = MaxDamagePlayer(
     team=teambuilder,
     battle_format="gen8ou",
@@ -301,16 +306,25 @@ max_damage_player = MaxDamagePlayer(
     max_concurrent_battles=100
 )
 
-copg_test_vs_max_damage = COPGTestPlayer(
-    prob_dist=p1,
-    team=teambuilder,
-    battle_format="gen8ou",
-    log_level=40,
-    max_concurrent_battles=100
-)
-
-async def test(superbatch):
+async def test(superbatch, prob_dist):
+    print(f'Testing superbatch #{superbatch}')
     start = time.time()
+
+    copg_test_vs_random = COPGTestPlayer(
+        prob_dist=prob_dist,
+        team=teambuilder,
+        battle_format="gen8ou",
+        log_level=40,
+        max_concurrent_battles=100
+    )
+
+    copg_test_vs_max_damage = COPGTestPlayer(
+        prob_dist=prob_dist,
+        team=teambuilder,
+        battle_format="gen8ou",
+        log_level=40,
+        max_concurrent_battles=100
+    )
 
     n_battles = 100
 
@@ -319,7 +333,7 @@ async def test(superbatch):
     wins_vs_random = copg_test_vs_random.n_won_battles
     time_vs_random = time.time() - start
 
-    print(f'COPG won {wins_vs_random}% of its battles vs. the random agent ({np.format_float_positional(time_vs_random, 2)} seconds)')
+    print(f'(Superbatch {superbatch}) COPG won {wins_vs_random}% of its battles vs. the random agent ({np.format_float_positional(time_vs_random, 2)} seconds)')
 
     start = time.time()
 
@@ -327,7 +341,7 @@ async def test(superbatch):
     wins_vs_max_damage = copg_test_vs_max_damage.n_won_battles
     time_vs_max_damage = time.time() - start
 
-    print(f'COPG won {wins_vs_max_damage}% of its battles vs. the max damage agent ({np.format_float_positional(time_vs_max_damage, 2)} seconds)')
+    print(f'(Superbatch {superbatch}) COPG won {wins_vs_max_damage}% of its battles vs. the max damage agent ({np.format_float_positional(time_vs_max_damage, 2)} seconds)')
 
     writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
     writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
@@ -337,29 +351,40 @@ async def test(superbatch):
     max_damage_player.reset_battles()
     copg_test_vs_max_damage.reset_battles()
 
+loop = asyncio.get_event_loop()
+training_start_time = time.time()
 
-for superbatch in range(NUM_SUPERBATCHES):
-    player1._start_new_battle = True
-    player2._start_new_battle = True
+player1._start_new_battle = True
+player2._start_new_battle = True
 
-    loop = asyncio.get_event_loop()
+env_algorithm_kwargs = {"n_battles": num_episode}
 
-    env_algorithm_kwargs = {"n_battles": num_episode}
+shared_info = SharedInfo()
 
-    shared_info = SharedInfo()
+t1 = Thread(target=lambda: env_algorithm_wrapper(player1, AGENT_1_ID, shared_info, env_algorithm_kwargs))
+t1.start()
 
-    t1 = Thread(target=lambda: env_algorithm_wrapper(player1, AGENT_1_ID, shared_info, superbatch, env_algorithm_kwargs))
-    t1.start()
+t2 = Thread(target=lambda: env_algorithm_wrapper(player2, AGENT_2_ID, shared_info, env_algorithm_kwargs))
+t2.start()
 
-    t2 = Thread(target=lambda: env_algorithm_wrapper(player2, AGENT_2_ID, shared_info, superbatch, env_algorithm_kwargs))
-    t2.start()
+while player1._start_new_battle:
+    loop.run_until_complete(launch_battles(player1, player2))
+t1.join()
+t2.join()
 
-    while player1._start_new_battle:
-        loop.run_until_complete(launch_battles(player1, player2))
-    t1.join()
-    t2.join()
+total_train_time += time.time() - training_start_time
 
-    # test
-    loop.run_until_complete(test(superbatch))
+# test
+testing_start_time = time.time()
+for i, p in enumerate(distributions_after_each_superbatch):
+    loop.run_until_complete(test(i, p))
+
+total_test_time += time.time() - testing_start_time
 
 print(f'Results written to {directory}.')
+
+total_script_time = time.time() - total_script_start_time
+print(f'Total script runtime: {np.format_float_positional(total_script_time, 2)}s')
+print(f'Total training time: {np.format_float_positional(total_train_time, 2)}s ({np.format_float_positional(100 * total_train_time / total_script_time, 2)}% of total time)')
+print(f'Total testing time: {np.format_float_positional(total_test_time, 2)}s ({np.format_float_positional(100 * total_test_time / total_script_time, 2)}% of total time)')
+
