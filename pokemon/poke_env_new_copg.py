@@ -262,8 +262,10 @@ def env_algorithm(env, id, shared_info, n_battles):
                             '../' + folder_location + experiment_name + 'model/val_' + str(
                                 timestamp) + ".pth")
     
-    # test
-    distributions_after_each_superbatch.append(deepcopy(p1))
+        # test
+        if id == AGENT_1_ID:
+            print(f'(S{superbatch}) Adding p1 to testing array')
+            distributions_after_each_superbatch.append(deepcopy(p1))
 
 # boilerplate code to run battles
 def env_algorithm_wrapper(player, id, shared_info, kwargs):
