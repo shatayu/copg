@@ -32,6 +32,10 @@ from markov_soccer.networks import critic
 from shared_info import SharedInfo
 from pokemon_constants import AGENT_1_ID, AGENT_2_ID, NUM_ACTIONS, NULL_ACTION_ID, TEAM, SWITCH_OFFSET, NUM_MOVES, STATE_DIM
 from player_classes import COPGGen8EnvPlayer, COPGTestPlayer, MaxDamagePlayer
+
+from heuristics.SimpleHeuristicPlayer import SHP
+from heuristics.SimpleHeuristicPlusPlayer import SHPP
+
 from utils import adjust_action_for_env
 
 total_script_start_time = time.time()
@@ -308,50 +312,55 @@ max_damage_player = MaxDamagePlayer(
     max_concurrent_battles=100
 )
 
-async def test(superbatch, prob_dist):
-    print(f'Testing superbatch #{superbatch}')
+shp_player = SHP(
+    name="SHP",
+    team=teambuilder
+)
+
+shp_plus_player = SHPP(
+    name="SHP_Plus",
+    shortname="SHP_Plus",
+    team=teambuilder
+)
+
+copg_test = COPGTestPlayer(
+    team=teambuilder,
+    battle_format="gen8ou",
+    log_level=40,
+    max_concurrent_battles=100
+)
+
+async def benchmark_copg(copg_test, prob_dist, opponent, opponent_name, superbatch, n_battles=100):
     start = time.time()
-
-    copg_test_vs_random = COPGTestPlayer(
-        prob_dist=prob_dist,
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40,
-        max_concurrent_battles=100
-    )
-
-    copg_test_vs_max_damage = COPGTestPlayer(
-        prob_dist=prob_dist,
-        team=teambuilder,
-        battle_format="gen8ou",
-        log_level=40,
-        max_concurrent_battles=100
-    )
 
     n_battles = 100
 
-    await copg_test_vs_random.battle_against(random_player, n_battles=n_battles)
+    copg_test.set_prob_dist(prob_dist)
 
-    wins_vs_random = copg_test_vs_random.n_won_battles
-    time_vs_random = time.time() - start
+    await copg_test.battle_against(random_player, n_battles=n_battles)
 
-    print(f'(Superbatch {superbatch}) COPG won {wins_vs_random}% of its battles vs. the random agent ({np.format_float_positional(time_vs_random, 2)} seconds)')
+    wins = copg_test.n_won_battles
+    duration = time.time() - start
 
-    start = time.time()
+    print(f'(Superbatch {superbatch}) COPG won {wins}% of its battles vs. {opponent_name} ({np.format_float_positional(duration, 2)} seconds)')
 
-    await copg_test_vs_max_damage.battle_against(max_damage_player, n_battles=n_battles)
-    wins_vs_max_damage = copg_test_vs_max_damage.n_won_battles
-    time_vs_max_damage = time.time() - start
+    writer.add_scalar(f'Vs/{opponent_name}_wins', wins, superbatch)
 
-    print(f'(Superbatch {superbatch}) COPG won {wins_vs_max_damage}% of its battles vs. the max damage agent ({np.format_float_positional(time_vs_max_damage, 2)} seconds)')
+    copg_test.reset_battles()
+    opponent.reset_battles()
 
-    writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
-    writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
 
-    random_player.reset_battles()
-    copg_test_vs_random.reset_battles()
-    max_damage_player.reset_battles()
-    copg_test_vs_max_damage.reset_battles()
+
+async def test(superbatch, prob_dist):
+    print(f'Testing superbatch #{superbatch}')
+   
+    for opponent, opponent_name in [
+        (random_player, 'random'),
+        (max_damage_player, 'max_damage'),
+        (shp_player, 'shp'),
+        (shp_plus_player, 'shp_plus')
+    ]:
+        await benchmark_copg(copg_test, prob_dist, opponent, opponent_name, superbatch)
 
 loop = asyncio.get_event_loop()
 training_start_time = time.time()

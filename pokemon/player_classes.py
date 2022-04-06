@@ -59,9 +59,12 @@ class COPGGen8EnvPlayer(Gen8EnvSinglePlayer):
         )
 
 class COPGTestPlayer(Player):
-    def __init__(self, prob_dist, **kwds):
-        self.prob_dist = prob_dist
+    def __init__(self, **kwds):
+        self.prob_dist = None
         super().__init__(**kwds)
+
+    def set_prob_dist(self, prob_dist):
+        self.prob_dist = prob_dist
 
     def choose_move(self, battle):
         observation = get_current_state(battle)
