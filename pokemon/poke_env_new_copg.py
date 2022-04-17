@@ -169,7 +169,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
             
             # compute returns
             returns1 = torch.cat(returns_np1)
-            returns_1_number = torch.mean(returns1).item()
+            returns_1_number = torch.sum(returns1).item()
             writer.add_scalar('Returns/agent_1', returns_1_number, timestamp)
             advantage_mat1 = returns1 - val1.transpose(0,1)
             
@@ -316,34 +316,31 @@ copg_test_vs_max_damage = COPGTestPlayer(
 async def test(superbatch):
     start = time.time()
 
-    n_battles = 100
-
-    copg_test.set_prob_dist(prob_dist)
+    await copg_test_vs_random.battle_against(random_player, n_battles=100)
 
     await copg_test.battle_against(random_player, n_battles=n_battles)
 
-    print(f'COPG won {wins_vs_random}% of its battles vs. the random agent ({np.format_float_positional(time_vs_random, 2)} seconds)')
+    print(
+        "COPG won %d / 100 battles vs. random [this took %f seconds]"
+        % (
+            wins_vs_random, time_vs_random
+        )
+    )
 
     print(f'(Superbatch {superbatch}) COPG won {wins}% of its battles vs. {opponent_name} ({np.format_float_positional(duration, 2)} seconds)')
 
     writer.add_scalar(f'Vs/{opponent_name}_wins', wins, superbatch)
 
-    copg_test.reset_battles()
-    opponent.reset_battles()
+    await copg_test_vs_max_damage.battle_against(max_damage_player, n_battles=100)
+    wins_vs_max_damage = copg_test_vs_max_damage.n_won_battles
+    time_vs_max_damage = time.time() - start
 
-    print(f'COPG won {wins_vs_max_damage}% of its battles vs. the max damage agent ({np.format_float_positional(time_vs_max_damage, 2)} seconds)')
-
-
-async def test(superbatch, prob_dist):
-    print(f'Testing superbatch #{superbatch}')
-   
-    for opponent, opponent_name in [
-        (random_player, 'random'),
-        (max_damage_player, 'max_damage'),
-        (shp_player, 'shp'),
-        (shp_plus_player, 'shp_plus')
-    ]:
-        await benchmark_copg(copg_test, prob_dist, opponent, opponent_name, superbatch)
+    print(
+        "COPG won %d / 100 battles vs. max_damage [this took %f seconds]"
+        % (
+            wins_vs_max_damage, time_vs_max_damage
+        )
+    )
 
 
 for superbatch in range(NUM_SUPERBATCHES):
