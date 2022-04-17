@@ -16,6 +16,7 @@ from threading import Thread
 from poke_env.utils import to_id_str
 from poke_env.player.env_player import Gen8EnvSinglePlayer
 from poke_env.teambuilder.constant_teambuilder import ConstantTeambuilder
+from poke_env.player_configuration import PlayerConfiguration
 from poke_env.player.player import Player
 from poke_env.player.random_player import RandomPlayer
 from poke_env.data import POKEDEX
@@ -191,7 +192,7 @@ def env_algorithm(env, id, shared_info, superbatch, n_battles):
 
             # compute loss for actor2
             actor2_loss = (-torch.Tensor(mat_action2_log_probs) * advantage_mat2)[0]
-            total_actor2_loss = torch.sum(actor2_loss).item()
+            total_actor2_loss = torch.mean(actor2_loss).item()
             writer.add_scalar('Loss/actor2', total_actor2_loss, timestamp)
 
             for loss_critic, gradient_norm in critic_update(torch.cat([torch.stack(mat_state1),torch.stack(mat_state2)]), torch.cat([returns1,returns2]).view(-1,1), q, optim_q):
@@ -279,11 +280,27 @@ async def launch_battles(player, opponent):
     )
     await battles_coroutine
 
+def get_short_date_string():
+    date_string = str(time.time_ns())
+
+    return date_string[len(date_string) - 12:]
+
 teambuilder = ConstantTeambuilder(TEAM)
-player1 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
-player2 = COPGGen8EnvPlayer(battle_format="gen8ou", log_level=40, team=teambuilder)
+player1 = COPGGen8EnvPlayer(
+    player_configuration=PlayerConfiguration(f'p1{get_short_date_string()}', None),
+    battle_format="gen8ou",
+    log_level=40,
+    team=teambuilder
+)
+player2 = COPGGen8EnvPlayer(
+    player_configuration=PlayerConfiguration(f'p2{get_short_date_string()}', None),
+    battle_format="gen8ou",
+    log_level=40,
+    team=teambuilder
+)
 
 random_player = RandomPlayer(
+    player_configuration=PlayerConfiguration(f'p2{get_short_date_string()}', None),
     team=teambuilder,
     battle_format="gen8ou",
     log_level=40,
@@ -291,6 +308,7 @@ random_player = RandomPlayer(
 )
 
 copg_test_vs_random = COPGTestPlayer(
+    player_configuration=PlayerConfiguration(f'cr{get_short_date_string()}', None),
     team=teambuilder,
     battle_format="gen8ou",
     log_level=40,
@@ -298,6 +316,7 @@ copg_test_vs_random = COPGTestPlayer(
 )
 
 max_damage_player = MaxDamagePlayer(
+    player_configuration=PlayerConfiguration(f'md{get_short_date_string()}', None),
     team=teambuilder,
     battle_format="gen8ou",
     log_level=40,
@@ -305,6 +324,7 @@ max_damage_player = MaxDamagePlayer(
 )
 
 copg_test_vs_max_damage = COPGTestPlayer(
+    player_configuration=PlayerConfiguration(f'cmd{get_short_date_string()}', None),
     team=teambuilder,
     battle_format="gen8ou",
     log_level=40,
