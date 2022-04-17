@@ -291,7 +291,6 @@ random_player = RandomPlayer(
 )
 
 copg_test_vs_random = COPGTestPlayer(
-    prob_dist=p1,
     team=teambuilder,
     battle_format="gen8ou",
     log_level=40,
@@ -306,7 +305,6 @@ max_damage_player = MaxDamagePlayer(
 )
 
 copg_test_vs_max_damage = COPGTestPlayer(
-    prob_dist=p1,
     team=teambuilder,
     battle_format="gen8ou",
     log_level=40,
@@ -316,9 +314,11 @@ copg_test_vs_max_damage = COPGTestPlayer(
 async def test(superbatch):
     start = time.time()
 
+    copg_test_vs_random.set_prob_dist(p1)
     await copg_test_vs_random.battle_against(random_player, n_battles=100)
 
-    await copg_test.battle_against(random_player, n_battles=n_battles)
+    wins_vs_random = copg_test_vs_random.n_won_battles
+    time_vs_random = time.time() - start
 
     print(
         "COPG won %d / 100 battles vs. random [this took %f seconds]"
@@ -327,10 +327,9 @@ async def test(superbatch):
         )
     )
 
-    print(f'(Superbatch {superbatch}) COPG won {wins}% of its battles vs. {opponent_name} ({np.format_float_positional(duration, 2)} seconds)')
+    start = time.time()
 
-    writer.add_scalar(f'Vs/{opponent_name}_wins', wins, superbatch)
-
+    copg_test_vs_max_damage.set_prob_dist(p1)
     await copg_test_vs_max_damage.battle_against(max_damage_player, n_battles=100)
     wins_vs_max_damage = copg_test_vs_max_damage.n_won_battles
     time_vs_max_damage = time.time() - start
@@ -341,6 +340,14 @@ async def test(superbatch):
             wins_vs_max_damage, time_vs_max_damage
         )
     )
+
+    writer.add_scalar('Vs/random_win_rate', wins_vs_random, superbatch)
+    writer.add_scalar('Vs/max_damage_win_rate', wins_vs_max_damage, superbatch)
+
+    random_player.reset_battles()
+    copg_test_vs_random.reset_battles()
+    max_damage_player.reset_battles()
+    copg_test_vs_max_damage.reset_battles()
 
 
 for superbatch in range(NUM_SUPERBATCHES):
