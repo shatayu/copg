@@ -7,11 +7,12 @@ import torch.autograd as autograd
 from copg_optim.utils import zero_grad, conjugate_gradient, general_conjugate_gradient #Need for zero grad and conjugate gradient functions
 
 class CoPG(object):
-    def __init__(self, max_params, min_params, lr=1e-3, weight_decay=0, device=torch.device('cpu'),
+    def __init__(self, max_params, min_params, eta=1e-4, lr=1e-3, weight_decay=0, device=torch.device('cpu'),
                  solve_x=False, collect_info=True):
         self.max_params = list(max_params)
         self.min_params = list(min_params)
         self.lr = lr
+        self.eta = eta
         self.weight_decay = weight_decay
         self.device = device
         self.solve_x = solve_x
@@ -88,7 +89,7 @@ class CoPG(object):
         for p in self.max_params:
             if self.weight_decay != 0:
                 p.data.add_(- self.weight_decay * p)
-            p.data.add_(self.lr * cg_x[index: index + p.numel()].reshape(p.shape))
+            p.data.add_(self.eta * cg_x[index: index + p.numel()].reshape(p.shape))
             index += p.numel()
         if index != cg_x.numel():
             raise ValueError('CG size mismatch')
@@ -96,7 +97,7 @@ class CoPG(object):
         for p in self.min_params:
             if self.weight_decay != 0:
                 p.data.add_(- self.weight_decay * p)
-            p.data.add_(- self.lr * cg_y[index: index + p.numel()].reshape(p.shape))
+            p.data.add_(- self.eta * cg_y[index: index + p.numel()].reshape(p.shape))
             index += p.numel()
         if index != cg_y.numel():
             raise ValueError('CG size mismatch')
