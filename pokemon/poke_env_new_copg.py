@@ -39,16 +39,17 @@ from heuristics.SimpleHeuristicPlusPlayer import SHPP
 from utils import adjust_action_for_env
 
 # accept command line arguments
-if len(sys.argv) not in [5, 6]:
-    print('Please provide batch_size, num_episode, num_superbatches, critic lr, and a name (optional) in that order')
+if len(sys.argv) not in [6, 7]:
+    print('Please provide batch_size, num_episode, num_superbatches, critic lr, eta, and a name (optional) in that order')
     sys.exit()
 
 batch_size = int(sys.argv[1])
 num_episode = int(sys.argv[2])
 NUM_SUPERBATCHES = int(sys.argv[3])
 critic_lr = float(sys.argv[4])
+eta = float(sys.argv[5])
 
-user_provided_name = sys.argv[5] if len(sys.argv) == 6 else \
+user_provided_name = sys.argv[6] if len(sys.argv) == 7 else \
     f"{get_monster()}_{datetime.now().strftime('%m_%d_%H_%M_%S')}"
 
 @lru_cache(None)
@@ -71,7 +72,7 @@ q = critic(STATE_DIM)
 # initialize CoPG
 optim_q = torch.optim.Adam(q.parameters(), lr=1e-4)
 
-optim = CoPG(p1.parameters(),p2.parameters(), lr=critic_lr)
+optim = CoPG(p1.parameters(),p2.parameters(), eta=eta, lr=critic_lr)
 
 folder_location = 'tensorboard/pokemon/'
 experiment_name = f'{user_provided_name}/'
